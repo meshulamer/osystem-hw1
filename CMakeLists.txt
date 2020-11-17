@@ -3,4 +3,4 @@ project(hw1)
 
 set(CMAKE_CXX_STANDARD 14)
 
-add_library(hw1 library.cpp library.h)
+add_executable(hw1 smash.cpp Commands.h Commands.cpp signals.cpp signals.h)

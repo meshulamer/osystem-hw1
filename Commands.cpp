@@ -91,30 +91,54 @@ SmallShell::SmallShell() {
 SmallShell::~SmallShell() {
 // TODO: add your implementation
 }
-
+void SmallShell::chprompt(std::string new_prompt) {
+    prompt = new_prompt;
+}
 /**
 * Creates and returns a pointer to Command class which matches the given command line (cmd_line)
 */
 Command * SmallShell::CreateCommand(const char* cmd_line) {
-	// For example:
-/*
+
   string cmd_s = string(cmd_line);
+  cmd_s = _ltrim(cmd_s);
   if (cmd_s.find("pwd") == 0) {
-    return new GetCurrDirCommand(cmd_line);
+    //return new GetCurrDirCommand(cmd_line);
   }
-  else if ...
-  .....
-  else {
-    return new ExternalCommand(cmd_line);
+  else if (cmd_s.find("chprompt") == 0) {
+      return new ChpromptCommand(cmd_line, this);
   }
-  */
+
   return nullptr;
 }
 
 void SmallShell::executeCommand(const char *cmd_line) {
   // TODO: Add your implementation here
   // for example:
-  // Command* cmd = CreateCommand(cmd_line);
-  // cmd->execute();
+  Command* cmd = CreateCommand(cmd_line);
+  cmd->execute();
   // Please note that you must fork smash process for some commands (e.g., external commands....)
+}
+
+ChpromptCommand::ChpromptCommand(const char* cmd_line,SmallShell* shell): BuiltInCommand(cmd_line), shell(shell){
+    std::string temp_prompt = cmd_line;
+    temp_prompt= _ltrim(temp_prompt);
+    temp_prompt = temp_prompt.substr(8);
+    if(temp_prompt.length()==0)
+        prompt = "smash> ";
+    else{
+        temp_prompt= _ltrim(temp_prompt);
+        int end_index = temp_prompt.find_first_of(" ");
+        temp_prompt = temp_prompt.substr(0,end_index);
+        prompt = temp_prompt;
+    }
+}
+void ChpromptCommand::execute() {
+    shell->chprompt(prompt);
+}
+std::string clearSpaces(const std::string str){
+    std::string temp_string = str;
+    int end_index = temp_string.find_first_not_of(" ");
+    temp_string= temp_string.substr(end_index);
+    return temp_string;
+
 }

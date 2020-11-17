@@ -8,10 +8,10 @@
 #define HISTORY_MAX_RECORDS (50)
 
 class Command {
-// TODO: Add your data members
+    std::string cmd_line;
  public:
-  Command(const char* cmd_line);
-  virtual ~Command();
+  Command(const char* cmd_line): cmd_line(cmd_line) {};
+  virtual ~Command() {};
   virtual void execute() = 0;
   //virtual void prepare();
   //virtual void cleanup();
@@ -20,8 +20,8 @@ class Command {
 
 class BuiltInCommand : public Command {
  public:
-  BuiltInCommand(const char* cmd_line);
-  virtual ~BuiltInCommand() {}
+  BuiltInCommand(const char* cmd_line): Command(cmd_line) {};
+  virtual ~BuiltInCommand() {};
 };
 
 class ExternalCommand : public Command {
@@ -156,9 +156,10 @@ class BackgroundCommand : public BuiltInCommand {
 
 class SmallShell {
  private:
-  // TODO: Add your data members
+    std::string prompt = "smash> ";
   SmallShell();
  public:
+  void chprompt(std::string new_prompt);
   Command *CreateCommand(const char* cmd_line);
   SmallShell(SmallShell const&)      = delete; // disable copy ctor
   void operator=(SmallShell const&)  = delete; // disable = operator
@@ -168,9 +169,22 @@ class SmallShell {
     // Instantiated on first use.
     return instance;
   }
+  std::string promptDisplay() const{
+      return prompt;
+  }
   ~SmallShell();
   void executeCommand(const char* cmd_line);
   // TODO: add extra methods as needed
+};
+
+class ChpromptCommand : public BuiltInCommand{
+private:
+    std::string prompt;
+    SmallShell* shell;
+public:
+    ChpromptCommand(const char* cmd_line, SmallShell* shell);
+    ~ChpromptCommand() override = default;
+    void execute() override;
 };
 
 #endif //SMASH_COMMAND_H_
