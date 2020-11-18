@@ -2,6 +2,7 @@
 #define SMASH_COMMAND_H_
 
 #include <vector>
+#include <string.h>
 
 #define COMMAND_ARGS_MAX_LENGTH (200)
 #define COMMAND_MAX_ARGS (20)
@@ -47,20 +48,6 @@ class RedirectionCommand : public Command {
   void execute() override;
   //void prepare() override;
   //void cleanup() override;
-};
-
-class ChangeDirCommand : public BuiltInCommand {
-// TODO: Add your data members public:
-  ChangeDirCommand(const char* cmd_line, char** plastPwd);
-  virtual ~ChangeDirCommand() {}
-  void execute() override;
-};
-
-class GetCurrDirCommand : public BuiltInCommand {
- public:
-  GetCurrDirCommand(const char* cmd_line);
-  virtual ~GetCurrDirCommand() {}
-  void execute() override;
 };
 
 class ShowPidCommand : public BuiltInCommand {
@@ -157,6 +144,8 @@ class BackgroundCommand : public BuiltInCommand {
 class SmallShell {
  private:
     std::string prompt = "smash> ";
+    char old_dir[128];
+    bool old_dir_exist = false;
   SmallShell();
  public:
   void chprompt(std::string new_prompt);
@@ -169,6 +158,16 @@ class SmallShell {
     // Instantiated on first use.
     return instance;
   }
+  char* cdret() {
+      if (old_dir_exist) {
+          return old_dir;
+      }
+      return nullptr;
+  }
+  void update_old_dir(char* updated_old_dir){
+      strcpy(old_dir, updated_old_dir);
+      this->old_dir_exist = true;
+  }
   std::string promptDisplay() const;
   ~SmallShell();
   void executeCommand(const char* cmd_line);
@@ -180,7 +179,7 @@ private:
     std::string prompt;
     SmallShell* shell;
 public:
-    ChpromptCommand(char** cmd_arg, int size, SmallShell* shell);
+    ChpromptCommand(const char* cmd_line, char** cmd_arg, int size, SmallShell* shell);
     ~ChpromptCommand() override = default;
     void execute() override;
 };
@@ -195,4 +194,28 @@ public:
     ~LsCommand() override  = default;
     void execute() override;
 };
+
+class PwdCommand : public BuiltInCommand{
+private:
+    SmallShell* shell;
+    std::string path;
+public:
+    PwdCommand(const char* cmd_line, char** cmd_arg, int size, SmallShell* shell);
+    ~PwdCommand() override = default;
+    void execute() override;
+};
+
+class ChangeDirCommand : public BuiltInCommand {
+private:
+    std::string to_print;
+    typedef enum{Ready, SmashError} Action;
+    Action action = Ready;
+    SmallShell* shell;
+    char new_dir[128];
+public:
+    ChangeDirCommand(const char* cmd_line, char** cmd_arg , int arg_vec_size, SmallShell* shell);
+    virtual ~ChangeDirCommand() {};
+    void execute() override;
+};
+
 #endif //SMASH_COMMAND_H_

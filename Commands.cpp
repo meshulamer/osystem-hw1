@@ -1,12 +1,16 @@
 #include <unistd.h>
 #include <string.h>
 #include <iostream>
+#include <utility>
 #include <vector>
 #include <sstream>
 #include <sys/wait.h>
 #include <iomanip>
 #include <dirent.h>
+#include <assert.h>
+#include <complex>
 #include "Commands.h"
+
 
 using namespace std;
 
@@ -93,7 +97,7 @@ SmallShell::~SmallShell() {
 // TODO: add your implementation
 }
 void SmallShell::chprompt(std::string new_prompt) {
-    prompt = new_prompt;
+    prompt = std::move(new_prompt);
 }
 /**
 * Creates and returns a pointer to Command class which matches the given command line (cmd_line)
@@ -105,11 +109,18 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
     cmd_s = _trim(cmd_s);
 
     if (cmd_s.find("pwd") == 0) {
-        //return new GetCurrDirCommand(cmd_line);
+        return new PwdCommand(cmd_line,arg, arg_size, this);
     } else if (cmd_s.find("chprompt") == 0) {
-        return new ChpromptCommand(arg, arg_size, this);
+        return new ChpromptCommand(cmd_line,arg, arg_size, this);
     } else if (cmd_s.find("ls") == 0) {
         return new LsCommand(arg[1], this);
+    }
+    if (cmd_s.find("cd") == 0){
+        return new ChangeDirCommand(cmd_line,arg, arg_size, this);
+    }
+    for(int i=0; i<arg_size; i++) {
+        assert(arg[i] != NULL);
+        free(arg[i]);
     }
     return nullptr;
 }
@@ -123,10 +134,11 @@ void SmallShell::executeCommand(const char *cmd_line) {
   // for example:
   Command* cmd = CreateCommand(cmd_line);
   cmd->execute();
+  delete cmd;
   // Please note that you must fork smash process for some commands (e.g., external commands....)
 }
 
-ChpromptCommand::ChpromptCommand(char** cmd_arg , int arg_vec_size, SmallShell* shell): BuiltInCommand(cmd_arg[0]), shell(shell){
+ChpromptCommand::ChpromptCommand(const char* cmd_line, char** cmd_arg , int arg_vec_size, SmallShell* shell): BuiltInCommand(cmd_line), shell(shell){
     if(arg_vec_size == 1){
         prompt = "smash> ";
     }
@@ -151,5 +163,70 @@ LsCommand::LsCommand(const char* cmd_line, SmallShell* shell): BuiltInCommand(cm
 void LsCommand::execute() {
     for(int i = 0 ; i < files_vector.size() ; i++){
         cout << files_vector[i] << endl;
+    }
+}
+
+PwdCommand::PwdCommand(const char* cmd_line, char** cmd_arg , int arg_vec_size, SmallShell* shell): BuiltInCommand(cmd_line), shell(shell){
+    char buf[1024];
+    try {
+        path = getcwd(buf, 1024);
+    }
+    catch(std::exception &err){
+        cout << "ERROR caught something in PwdCommand:"<< err.what();
+        exit(1);
+    }
+}
+
+
+void PwdCommand::execute() {
+    cout << path << endl;
+}
+
+ChangeDirCommand::ChangeDirCommand(const char* cmd_line, char** cmd_arg , int arg_vec_size, SmallShell* shell): BuiltInCommand(cmd_line), shell(shell) {
+    if(arg_vec_size > 2 ) {
+        to_print = "smash error: cd: too many arguments";
+        action = SmashError;
+    }
+    if(arg_vec_size !=2){
+        cmd_arg[1]= nullptr;
+    }
+    if(cmd_arg[1] != nullptr) {
+        strcpy(new_dir, cmd_arg[1]);
+    }
+}
+
+void ChangeDirCommand::execute() {
+    if(action == SmashError){
+        cout << to_print << endl;
+        return;
+    }
+    else if (strcmp(new_dir, "-") == 0) {
+        char *old_dir = shell->cdret();
+        if (old_dir == nullptr) {
+            cout << "smash error: cd: OLDPWD not set" << endl;
+            return;
+        }
+        else{
+            char buf[128];
+            char* current_dir = getcwd(buf,128);
+            if (chdir(old_dir) == 0){
+                shell->update_old_dir(current_dir);
+            }
+            else{
+                perror("shell error: cd: not able to change directory");
+                return;
+            }
+        }
+    }
+    else {
+        char buf[128];
+        char* current_dir = getcwd(buf,128);
+        if (chdir(new_dir) == 0){
+            shell->update_old_dir(current_dir);
+        }
+        else{
+            perror("shell error: cd: not able to change directory");
+            return;
+        }
     }
 }
