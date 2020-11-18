@@ -169,9 +169,7 @@ class SmallShell {
     // Instantiated on first use.
     return instance;
   }
-  std::string promptDisplay() const{
-      return prompt;
-  }
+  std::string promptDisplay() const;
   ~SmallShell();
   void executeCommand(const char* cmd_line);
   // TODO: add extra methods as needed
@@ -187,4 +185,14 @@ public:
     void execute() override;
 };
 
+
+class LsCommand : public BuiltInCommand {
+private:
+    SmallShell* shell;
+    std::vector<std::string> files_vector;
+public:
+    LsCommand(const char* cmd_line, SmallShell* shell);
+    ~LsCommand() override  = default;
+    void execute() override;
+};
 #endif //SMASH_COMMAND_H_

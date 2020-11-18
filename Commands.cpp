@@ -5,6 +5,7 @@
 #include <sstream>
 #include <sys/wait.h>
 #include <iomanip>
+#include <dirent.h>
 #include "Commands.h"
 
 using namespace std;
@@ -100,15 +101,22 @@ void SmallShell::chprompt(std::string new_prompt) {
 Command * SmallShell::CreateCommand(const char* cmd_line) {
 
   string cmd_s = string(cmd_line);
-  cmd_s = _ltrim(cmd_s);
+  cmd_s = _trim(cmd_s);
+
   if (cmd_s.find("pwd") == 0) {
     //return new GetCurrDirCommand(cmd_line);
   }
   else if (cmd_s.find("chprompt") == 0) {
       return new ChpromptCommand(cmd_line, this);
   }
-
+  else if(cmd_s.find("ls") == 0) {
+      return new LsCommand(cmd_line, this);
+  }
   return nullptr;
+}
+
+std::string SmallShell::promptDisplay() const {
+    return prompt;
 }
 
 void SmallShell::executeCommand(const char *cmd_line) {
@@ -132,13 +140,24 @@ ChpromptCommand::ChpromptCommand(const char* cmd_line,SmallShell* shell): BuiltI
         prompt = temp_prompt;
     }
 }
+
+
 void ChpromptCommand::execute() {
     shell->chprompt(prompt);
 }
-std::string clearSpaces(const std::string str){
-    std::string temp_string = str;
-    int end_index = temp_string.find_first_not_of(" ");
-    temp_string= temp_string.substr(end_index);
-    return temp_string;
 
+LsCommand::LsCommand(const char* cmd_line, SmallShell* shell): BuiltInCommand(cmd_line), shell(shell){
+    FILE *proc = popen("/bin/ls -al","r");
+    char buf[1024];
+    while ( !feof(proc) && fgets(buf,sizeof(buf),proc) )
+    {
+        files_vector.emplace_back(buf);
+    }
+}
+
+
+void LsCommand::execute() {
+    for(int i = 0 ; i < files_vector.size() ; i++){
+        cout << files_vector[i] << endl;
+    }
 }
