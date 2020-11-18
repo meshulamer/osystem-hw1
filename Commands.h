@@ -180,7 +180,7 @@ private:
     std::string prompt;
     SmallShell* shell;
 public:
-    ChpromptCommand(const char* cmd_line, SmallShell* shell);
+    ChpromptCommand(char** cmd_arg, int size, SmallShell* shell);
     ~ChpromptCommand() override = default;
     void execute() override;
 };

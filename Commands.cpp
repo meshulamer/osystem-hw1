@@ -99,20 +99,19 @@ void SmallShell::chprompt(std::string new_prompt) {
 * Creates and returns a pointer to Command class which matches the given command line (cmd_line)
 */
 Command * SmallShell::CreateCommand(const char* cmd_line) {
+    char* arg[20];
+    int arg_size =_parseCommandLine(cmd_line, arg);
+    string cmd_s = string(cmd_line);
+    cmd_s = _trim(cmd_s);
 
-  string cmd_s = string(cmd_line);
-  cmd_s = _trim(cmd_s);
-
-  if (cmd_s.find("pwd") == 0) {
-    //return new GetCurrDirCommand(cmd_line);
-  }
-  else if (cmd_s.find("chprompt") == 0) {
-      return new ChpromptCommand(cmd_line, this);
-  }
-  else if(cmd_s.find("ls") == 0) {
-      return new LsCommand(cmd_line, this);
-  }
-  return nullptr;
+    if (cmd_s.find("pwd") == 0) {
+        //return new GetCurrDirCommand(cmd_line);
+    } else if (cmd_s.find("chprompt") == 0) {
+        return new ChpromptCommand(arg, arg_size, this);
+    } else if (cmd_s.find("ls") == 0) {
+        return new LsCommand(arg[1], this);
+    }
+    return nullptr;
 }
 
 std::string SmallShell::promptDisplay() const {
@@ -127,18 +126,11 @@ void SmallShell::executeCommand(const char *cmd_line) {
   // Please note that you must fork smash process for some commands (e.g., external commands....)
 }
 
-ChpromptCommand::ChpromptCommand(const char* cmd_line,SmallShell* shell): BuiltInCommand(cmd_line), shell(shell){
-    std::string temp_prompt = cmd_line;
-    temp_prompt= _ltrim(temp_prompt);
-    temp_prompt = temp_prompt.substr(8);
-    if(temp_prompt.length()==0)
+ChpromptCommand::ChpromptCommand(char** cmd_arg , int arg_vec_size, SmallShell* shell): BuiltInCommand(cmd_arg[0]), shell(shell){
+    if(arg_vec_size == 1){
         prompt = "smash> ";
-    else{
-        temp_prompt= _ltrim(temp_prompt);
-        int end_index = temp_prompt.find_first_of(" ");
-        temp_prompt = temp_prompt.substr(0,end_index);
-        prompt = temp_prompt;
     }
+    else prompt = cmd_arg[1];
 }
 
 
