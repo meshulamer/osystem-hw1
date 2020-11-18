@@ -113,7 +113,10 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
     } else if (cmd_s.find("chprompt") == 0) {
         return new ChpromptCommand(cmd_line,arg, arg_size, this);
     } else if (cmd_s.find("ls") == 0) {
-        return new LsCommand(arg[1], this);
+        return new LsCommand(arg[0], this);
+    }
+    else if (cmd_s.find("showpid") == 0) {
+        return new ShowPidCommand(cmd_line);
     }
     if (cmd_s.find("cd") == 0){
         return new ChangeDirCommand(cmd_line,arg, arg_size, this);
@@ -150,20 +153,40 @@ void ChpromptCommand::execute() {
     shell->chprompt(prompt);
 }
 
-LsCommand::LsCommand(const char* cmd_line, SmallShell* shell): BuiltInCommand(cmd_line), shell(shell){
-    FILE *proc = popen("/bin/ls -al","r");
-    char buf[1024];
-    while ( !feof(proc) && fgets(buf,sizeof(buf),proc) )
-    {
-        files_vector.emplace_back(buf);
-    }
-}
-
+LsCommand::LsCommand(const char* cmd_line, SmallShell* shell): BuiltInCommand(cmd_line), shell(shell) {}
 
 void LsCommand::execute() {
-    for(int i = 0 ; i < files_vector.size() ; i++){
-        cout << files_vector[i] << endl;
+    struct dirent **namelist;
+    int n;
+    n = scandir(".", &namelist, NULL, alphasort);
+    if (n == -1) {
+        perror("scandir");
+        exit(EXIT_FAILURE);
     }
+    int i = 2;
+    while (i < n) {
+        printf("%s\n", namelist[i]->d_name);
+        free(namelist[i]);
+        i++;
+    }
+    free(namelist);
+}
+
+ShowPidCommand::ShowPidCommand(const char *cmd_line) : BuiltInCommand(cmd_line) {}
+
+void ShowPidCommand::execute() {
+    cout << getpid() << endl;
+}
+
+JobsList::JobsList() : current_max_job_id(0), jobs_list() {}
+
+void JobsList::addJob(Command* cmd, bool isStopped) {
+    JobEntry new_job;
+    new_job.cmd = cmd;
+    new_job.job_id = ++current_max_job_id;
+    new_job.is_finished = false;
+    new_job.is_stopped = isStopped;
+    jobs_list.push_back(new_job);
 }
 
 PwdCommand::PwdCommand(const char* cmd_line, char** cmd_arg , int arg_vec_size, SmallShell* shell): BuiltInCommand(cmd_line), shell(shell){

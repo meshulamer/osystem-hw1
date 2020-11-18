@@ -50,6 +50,14 @@ class RedirectionCommand : public Command {
   //void cleanup() override;
 };
 
+
+class GetCurrDirCommand : public BuiltInCommand {
+ public:
+  GetCurrDirCommand(const char* cmd_line);
+  virtual ~GetCurrDirCommand() {}
+  void execute() override;
+};
+
 class ShowPidCommand : public BuiltInCommand {
  public:
   ShowPidCommand(const char* cmd_line);
@@ -87,23 +95,32 @@ class HistoryCommand : public BuiltInCommand {
 };
 
 class JobsList {
- public:
-  class JobEntry {
-   // TODO: Add your data members
-  };
- // TODO: Add your data members
- public:
-  JobsList();
-  ~JobsList();
-  void addJob(Command* cmd, bool isStopped = false);
-  void printJobsList();
-  void killAllJobs();
-  void removeFinishedJobs();
-  JobEntry * getJobById(int jobId);
-  void removeJobById(int jobId);
-  JobEntry * getLastJob(int* lastJobId);
-  JobEntry *getLastStoppedJob(int *jobId);
-  // TODO: Add extra methods or modify exisitng ones as needed
+public:
+    class JobEntry {
+        // TODO: Add your data members
+        Command* cmd;
+        int job_id;
+        bool is_finished;
+        bool is_stopped;
+    public:
+        friend class JobsList;
+    };
+    // TODO: Add your data members
+private:
+    int current_max_job_id;
+    std::vector<JobEntry> jobs_list;
+public:
+    JobsList();
+    ~JobsList();
+    void addJob(Command* cmd, bool isStopped = false);
+    void printJobsList();
+    void killAllJobs();
+    void removeFinishedJobs();
+    JobEntry * getJobById(int jobId);
+    void removeJobById(int jobId);
+    JobEntry * getLastJob(int* lastJobId);
+    JobEntry *getLastStoppedJob(int *jobId);
+    // TODO: Add extra methods or modify exisitng ones as needed
 };
 
 class JobsCommand : public BuiltInCommand {
@@ -146,6 +163,7 @@ class SmallShell {
     std::string prompt = "smash> ";
     char old_dir[128];
     bool old_dir_exist = false;
+    JobsList job_list = JobsList();
   SmallShell();
  public:
   void chprompt(std::string new_prompt);
