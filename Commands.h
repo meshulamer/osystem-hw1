@@ -3,20 +3,24 @@
 
 #include <vector>
 #include <string.h>
+#include <time.h>
 
 #define COMMAND_ARGS_MAX_LENGTH (200)
 #define COMMAND_MAX_ARGS (20)
 #define HISTORY_MAX_RECORDS (50)
-
+#define MAX_BUFFER_LENGTH (128)
+class SmallShell;
 class Command {
-    std::string cmd_line;
- public:
-  Command(const char* cmd_line): cmd_line(cmd_line) {};
-  virtual ~Command() {};
-  virtual void execute() = 0;
-  //virtual void prepare();
-  //virtual void cleanup();
-  // TODO: Add your extra methods if needed
+public:
+    char cmd_string[COMMAND_ARGS_MAX_LENGTH];
+    Command(const char *cmd_line){
+        strcpy(cmd_string,cmd_line);
+    }
+    virtual ~Command() {};
+    virtual void execute() = 0;
+    //virtual void prepare();
+    //virtual void cleanup(){};
+    // TODO: Add your extra methods if needed
 };
 
 class BuiltInCommand : public Command {
@@ -26,10 +30,14 @@ class BuiltInCommand : public Command {
 };
 
 class ExternalCommand : public Command {
- public:
-  ExternalCommand(const char* cmd_line);
-  virtual ~ExternalCommand() {}
-  void execute() override;
+private:
+    int arg_size;
+    bool bg_cmd = false;
+    SmallShell* shell;
+public:
+    ExternalCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell);
+    virtual ~ExternalCommand() {}
+    void execute() override;
 };
 
 class PipeCommand : public Command {
@@ -50,14 +58,6 @@ class RedirectionCommand : public Command {
   //void cleanup() override;
 };
 
-
-class GetCurrDirCommand : public BuiltInCommand {
- public:
-  GetCurrDirCommand(const char* cmd_line);
-  virtual ~GetCurrDirCommand() {}
-  void execute() override;
-};
-
 class ShowPidCommand : public BuiltInCommand {
  public:
   ShowPidCommand(const char* cmd_line);
@@ -73,46 +73,34 @@ class QuitCommand : public BuiltInCommand {
   void execute() override;
 };
 
-class CommandsHistory {
- protected:
-  class CommandHistoryEntry {
-	  // TODO: Add your data members
-  };
- // TODO: Add your data members
- public:
-  CommandsHistory();
-  ~CommandsHistory() {}
-  void addRecord(const char* cmd_line);
-  void printHistory();
-};
-
-class HistoryCommand : public BuiltInCommand {
- // TODO: Add your data members
- public:
-  HistoryCommand(const char* cmd_line, CommandsHistory* history);
-  virtual ~HistoryCommand() {}
-  void execute() override;
-};
-
 class JobsList {
+
 public:
     class JobEntry {
-        // TODO: Add your data members
-        Command* cmd;
+        time_t start_time;
         int job_id;
+        int pid;
         bool is_finished;
         bool is_stopped;
+        char cmd_line[COMMAND_MAX_ARGS];
     public:
         friend class JobsList;
+        friend class SmallShell;
+        friend int JobNuGreaterThen(JobsList::JobEntry &a, JobsList::JobEntry &b);
+
+
     };
     // TODO: Add your data members
 private:
-    int current_max_job_id;
+    int current_max_job_id = 0;
     std::vector<JobEntry> jobs_list;
 public:
-    JobsList();
-    ~JobsList();
-    void addJob(Command* cmd, bool isStopped = false);
+    friend class SmallShell;
+    JobsList(){
+        current_max_job_id = 0;
+    };
+    ~JobsList()= default;
+    void addJob(int pid, time_t startime, char* com);
     void printJobsList();
     void killAllJobs();
     void removeFinishedJobs();
@@ -120,13 +108,14 @@ public:
     void removeJobById(int jobId);
     JobEntry * getLastJob(int* lastJobId);
     JobEntry *getLastStoppedJob(int *jobId);
-    // TODO: Add extra methods or modify exisitng ones as needed
+    int GenerateJobId();
+    friend int JobNuGreaterThen(JobsList::JobEntry &a, JobsList::JobEntry &b);
 };
 
 class JobsCommand : public BuiltInCommand {
- // TODO: Add your data members
+    SmallShell* shell;
  public:
-  JobsCommand(const char* cmd_line, JobsList* jobs);
+  JobsCommand(const char* cmd_line, char** cmd_arg , int arg_vec_size, SmallShell* shell);
   virtual ~JobsCommand() {}
   void execute() override;
 };
@@ -159,37 +148,50 @@ class BackgroundCommand : public BuiltInCommand {
 // maybe ls, timeout ?
 
 class SmallShell {
- private:
+private:
     std::string prompt = "smash> ";
     char old_dir[128];
     bool old_dir_exist = false;
     JobsList job_list = JobsList();
-  SmallShell();
- public:
-  void chprompt(std::string new_prompt);
-  Command *CreateCommand(const char* cmd_line);
-  SmallShell(SmallShell const&)      = delete; // disable copy ctor
-  void operator=(SmallShell const&)  = delete; // disable = operator
-  static SmallShell& getInstance() // make SmallShell singleton
-  {
-    static SmallShell instance; // Guaranteed to be destroyed.
-    // Instantiated on first use.
-    return instance;
-  }
-  char* cdret() {
-      if (old_dir_exist) {
-          return old_dir;
-      }
-      return nullptr;
-  }
-  void update_old_dir(char* updated_old_dir){
-      strcpy(old_dir, updated_old_dir);
-      this->old_dir_exist = true;
-  }
-  std::string promptDisplay() const;
-  ~SmallShell();
-  void executeCommand(const char* cmd_line);
-  // TODO: add extra methods as needed
+
+    SmallShell();
+
+public:
+    void cleanup();
+    void printJobs();
+    void chprompt(std::string new_prompt);
+
+    Command *CreateCommand(const char *cmd_line);
+
+    SmallShell(SmallShell const &) = delete; // disable copy ctor
+    void operator=(SmallShell const &) = delete; // disable = operator
+    static SmallShell &getInstance() // make SmallShell
+    {
+        static SmallShell instance; // Guaranteed to be destroyed.
+        // Instantiated on first use.
+        return instance;
+    }
+
+    void addJob(int pid, time_t startime);
+
+    char *cdret() {
+        if (old_dir_exist) {
+            return old_dir;
+        }
+        return nullptr;
+    }
+
+    void update_old_dir(char *updated_old_dir) {
+        strcpy(old_dir, updated_old_dir);
+        this->old_dir_exist = true;
+    }
+
+    std::string promptDisplay() const;
+
+    ~SmallShell();
+
+    void executeCommand(const char *cmd_line);
+    // TODO: add extra methods as needed
 };
 
 class ChpromptCommand : public BuiltInCommand{

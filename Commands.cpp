@@ -10,8 +10,9 @@
 #include <assert.h>
 #include <complex>
 #include "Commands.h"
+#include <algorithm>
 
-
+#define BASH_PATH "C:/cygwin64/bin/bash.exe"
 using namespace std;
 
 const std::string WHITESPACE = " \n\r\t\f\v";
@@ -32,6 +33,9 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 #define EXEC(path, arg) \
   execvp((path), (arg));
 
+  int JobNuGreaterThen(JobsList::JobEntry &a, JobsList::JobEntry &b){
+      return a.pid - b.pid;
+  }
 string _ltrim(const std::string& s)
 {
   size_t start = s.find_first_not_of(WHITESPACE);
@@ -107,25 +111,28 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
     int arg_size =_parseCommandLine(cmd_line, arg);
     string cmd_s = string(cmd_line);
     cmd_s = _trim(cmd_s);
-
+    Command* rtnCmd = nullptr;
     if (cmd_s.find("pwd") == 0) {
-        return new PwdCommand(cmd_line,arg, arg_size, this);
+        rtnCmd = new PwdCommand(cmd_line,arg, arg_size, this);
     } else if (cmd_s.find("chprompt") == 0) {
-        return new ChpromptCommand(cmd_line,arg, arg_size, this);
+        rtnCmd = new ChpromptCommand(cmd_line,arg, arg_size, this);
     } else if (cmd_s.find("ls") == 0) {
-        return new LsCommand(arg[0], this);
+        rtnCmd = new LsCommand(arg[0], this);
     }
     else if (cmd_s.find("showpid") == 0) {
-        return new ShowPidCommand(cmd_line);
+        rtnCmd = new ShowPidCommand(cmd_line);
     }
-    if (cmd_s.find("cd") == 0){
-        return new ChangeDirCommand(cmd_line,arg, arg_size, this);
+    else if (cmd_s.find("cd") == 0){
+        rtnCmd = new ChangeDirCommand(cmd_line,arg, arg_size, this);
+    }
+    else{
+        rtnCmd = new ExternalCommand(cmd_line,arg, arg_size, this);
     }
     for(int i=0; i<arg_size; i++) {
         assert(arg[i] != NULL);
         free(arg[i]);
     }
-    return nullptr;
+    return rtnCmd;
 }
 
 std::string SmallShell::promptDisplay() const {
@@ -133,12 +140,19 @@ std::string SmallShell::promptDisplay() const {
 }
 
 void SmallShell::executeCommand(const char *cmd_line) {
-  // TODO: Add your implementation here
-  // for example:
+  cleanup();
   Command* cmd = CreateCommand(cmd_line);
   cmd->execute();
   delete cmd;
   // Please note that you must fork smash process for some commands (e.g., external commands....)
+}
+
+void SmallShell::addJob(int pid, time_t startime, char* cmd_line) {
+    job_list.addJob(pid, startime, cmd_line);
+}
+
+void SmallShell::cleanup() {
+    job_list.removeFinishedJobs();
 }
 
 ChpromptCommand::ChpromptCommand(const char* cmd_line, char** cmd_arg , int arg_vec_size, SmallShell* shell): BuiltInCommand(cmd_line), shell(shell){
@@ -178,15 +192,37 @@ void ShowPidCommand::execute() {
     cout << getpid() << endl;
 }
 
-JobsList::JobsList() : current_max_job_id(0), jobs_list() {}
-
-void JobsList::addJob(Command* cmd, bool isStopped) {
-    JobEntry new_job;
-    new_job.cmd = cmd;
-    new_job.job_id = ++current_max_job_id;
+void JobsList::addJob(int pid, time_t startime, char* com) {
+    JobEntry new_job = JobEntry();
+    new_job.start_time = startime;
+    new_job.pid = pid;
+    current_max_job_id++;
+    new_job.job_id = current_max_job_id;
     new_job.is_finished = false;
-    new_job.is_stopped = isStopped;
+    new_job.is_stopped = false;
+    strcpy(new_job.cmd_line, com);
     jobs_list.push_back(new_job);
+}
+
+void JobsList::removeFinishedJobs() {
+    for (auto it = jobs_list.begin(); it != jobs_list.end();){
+        if(waitpid(it->pid,nullptr,WNOHANG)>0){
+            if(it->job_id == current_max_job_id){
+            }
+            it = jobs_list.erase(it);
+        }
+        else{
+            ++it;
+        }
+    }
+    for(auto& job : jobs_list){
+        int max =0;
+        if (job.job_id>max){
+            max = job.job_id;
+        }
+        current_max_job_id = max;
+    }
+
 }
 
 PwdCommand::PwdCommand(const char* cmd_line, char** cmd_arg , int arg_vec_size, SmallShell* shell): BuiltInCommand(cmd_line), shell(shell){
@@ -251,5 +287,50 @@ void ChangeDirCommand::execute() {
             perror("shell error: cd: not able to change directory");
             return;
         }
+    }
+}
+
+ExternalCommand::ExternalCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell): Command(cmd_line), shell(shell) {
+    std::string last_arg = cmd_arg[arg_vec_size-1];
+    arg_size = arg_vec_size;
+    if(last_arg[last_arg.size()-1] == '&'){
+        bg_cmd = true;
+    }
+}
+
+void ExternalCommand::execute() {
+    char *execv_args[] = {BASH_PATH, "-c", cmd_string, nullptr};
+    time_t startime = time(NULL);
+    int pid = fork();
+    if (pid == 0) {
+        if (execv(execv_args[0], execv_args) == -1) {
+            perror("smash error: execv() failed");
+            exit(1);
+        }
+    }
+    else {
+        if (!bg_cmd) {
+            waitpid(pid, nullptr, 0);
+        }
+        else{
+            shell->addJob(pid, startime);
+        }
+    }
+}
+
+JobsCommand::JobsCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell):BuiltInCommand(cmd_line),shell(shell) {
+
+}
+void JobsCommand::execute() {
+    shell->printJobs();
+}
+
+void SmallShell::printJobs() {
+    std::sort(job_list.jobs_list.begin(),job_list.jobs_list.end(),JobNuGreaterThen);
+    for(int i=0; i< job_list.jobs_list.size(); i++){
+        cout<< "[" << job_list.jobs_list[i].job_id << "] "+ job_list.jobs_list[i].cmd_line + " : " << difftime(time(
+                nullptr),job_list.jobs_list[i].start_time) <<" secs ";
+        if (job_list.jobs_list[i].is_stopped) cout << "(stopped)";
+        cout<< endl;
     }
 }
