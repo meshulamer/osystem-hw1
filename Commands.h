@@ -137,8 +137,11 @@ private:
 
 class ForegroundCommand : public BuiltInCommand {
  // TODO: Add your data members
+ SmallShell* shell;
+ int job_id;
+ bool syntax_error = false;
  public:
-  ForegroundCommand(const char* cmd_line, JobsList* jobs);
+  ForegroundCommand(const char* cmd_line, char** cmd_arg, int arg_vec_size, SmallShell* shell);
   virtual ~ForegroundCommand() {}
   void execute() override;
 };
@@ -162,7 +165,6 @@ private:
     char old_dir[128];
     bool old_dir_exist = false;
     JobsList job_list = JobsList();
-
     SmallShell();
 
 public:
@@ -171,7 +173,9 @@ public:
     void chprompt(std::string new_prompt);
 
     Command *CreateCommand(const char *cmd_line);
-
+    int getCurrMaxJobId();
+    void setCurrMaxJobIdBy(int add_val);
+    int getJobsListSize();
     SmallShell(SmallShell const &) = delete; // disable copy ctor
     void operator=(SmallShell const &) = delete; // disable = operator
     static SmallShell &getInstance() // make SmallShell

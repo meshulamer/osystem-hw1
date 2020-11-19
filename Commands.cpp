@@ -132,10 +132,10 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
         rtnCmd = new KillCommand(cmd_line,arg, arg_size, this);
     }
     else if (cmd_s.find("bg") == 0){
-        rtnCmd = new KillCommand(cmd_line,arg, arg_size, this);
+        rtnCmd = new BackgroundCommand(cmd_line,arg, arg_size, this);
     }
     else{
-        rtnCmd = new BackgroundCommand(cmd_line,arg, arg_size, this);
+        rtnCmd = new ExternalCommand(cmd_line,arg, arg_size, this);
     }
     for(int i=0; i<arg_size; i++) {
         assert(arg[i] != NULL);
@@ -252,6 +252,21 @@ JobsList::JobEntry JobsList::getJobById(int jobId) {
     }
     throw;
 }
+
+int SmallShell::getCurrMaxJobId() {
+    return job_list.current_max_job_id;
+}
+
+
+void SmallShell::setCurrMaxJobIdBy(int add_val) {
+    job_list.current_max_job_id += add_val;
+}
+
+
+int SmallShell::getJobsListSize(){
+    return job_list.jobs_list.size();
+}
+
 
 PwdCommand::PwdCommand(const char* cmd_line, char** cmd_arg , int arg_vec_size, SmallShell* shell): BuiltInCommand(cmd_line), shell(shell){
     char buf[1024];
@@ -417,6 +432,32 @@ void KillCommand::execute(){
         return;
     }
     cout << "signal number " << signal << " was sent to pid " << job.getPid() << endl;
+
+}
+
+
+ForegroundCommand::ForegroundCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell) : BuiltInCommand(cmd_line), shell(shell) {
+    job_id = shell->getCurrMaxJobId();
+    if (arg_vec_size > 1) {
+        try {
+            job_id = stoi(cmd_arg[1]);
+        }
+        catch (...){
+            syntax_error = true;
+        }
+    }
+    if(arg_vec_size > 2) syntax_error = true;
+}
+
+
+void ForegroundCommand::execute() {
+    if(syntax_error){
+        cout << "smash error: fg: invalid arguments" << endl;
+    }
+    else if(shell->getJobsListSize() == 0){
+        cout << "smash error: fg: jobs list is empty" << endl;
+    }
+    else if(//the job doest not exists do you shit)
 
 }
 
