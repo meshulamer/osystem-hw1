@@ -87,6 +87,7 @@ public:
         friend class JobsList;
         friend class SmallShell;
         friend int JobNuGreaterThen(JobsList::JobEntry &a, JobsList::JobEntry &b);
+        int getPid(){return pid;};
 
 
     };
@@ -104,11 +105,10 @@ public:
     void printJobsList();
     void killAllJobs();
     void removeFinishedJobs();
-    JobEntry * getJobById(int jobId);
+    JobEntry getJobById(int jobId);
     void removeJobById(int jobId);
     JobEntry * getLastJob(int* lastJobId);
     JobEntry *getLastStoppedJob(int *jobId);
-    int GenerateJobId();
     friend int JobNuGreaterThen(JobsList::JobEntry &a, JobsList::JobEntry &b);
 };
 
@@ -121,9 +121,16 @@ class JobsCommand : public BuiltInCommand {
 };
 
 class KillCommand : public BuiltInCommand {
- // TODO: Add your data members
+public:
+    typedef enum{Ready,JobError,SyntaxError} Status;
+private:
+    SmallShell* shell;
+    int signal;
+    int job_id = -1;
+    Status status = Ready;
+
  public:
-  KillCommand(const char* cmd_line, JobsList* jobs);
+  KillCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell);
   virtual ~KillCommand() {}
   void execute() override;
 };
@@ -137,9 +144,11 @@ class ForegroundCommand : public BuiltInCommand {
 };
 
 class BackgroundCommand : public BuiltInCommand {
- // TODO: Add your data members
+    SmallShell* shell;
+    int job_id;
+    bool syntax_error = false;
  public:
-  BackgroundCommand(const char* cmd_line, JobsList* jobs);
+  BackgroundCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell);
   virtual ~BackgroundCommand() {}
   void execute() override;
 };
@@ -191,7 +200,7 @@ public:
     ~SmallShell();
 
     void executeCommand(const char *cmd_line);
-    // TODO: add extra methods as needed
+    JobsList::JobEntry getJob(int job_id);
 };
 
 class ChpromptCommand : public BuiltInCommand{

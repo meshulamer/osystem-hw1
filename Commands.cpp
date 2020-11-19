@@ -128,8 +128,14 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
     else if (cmd_s.find("jobs") == 0){
         rtnCmd = new JobsCommand(cmd_line,arg, arg_size, this);
     }
+    else if (cmd_s.find("kill") == 0){
+        rtnCmd = new KillCommand(cmd_line,arg, arg_size, this);
+    }
+    else if (cmd_s.find("bg") == 0){
+        rtnCmd = new KillCommand(cmd_line,arg, arg_size, this);
+    }
     else{
-        rtnCmd = new ExternalCommand(cmd_line,arg, arg_size, this);
+        rtnCmd = new BackgroundCommand(cmd_line,arg, arg_size, this);
     }
     for(int i=0; i<arg_size; i++) {
         assert(arg[i] != NULL);
@@ -208,13 +214,16 @@ void JobsList::addJob(int pid, time_t startime, char* com) {
 }
 
 void JobsList::removeFinishedJobs() {
-    int status;
+    int retval =0;
     for (auto it = jobs_list.begin(); it != jobs_list.end();){
-        status = waitpid(it->pid,&status,WNOHANG);
-        if(status >1){
+        retval = waitpid(it->pid,NULL,WNOHANG);
+        if(retval > 0){
             if(it->job_id == current_max_job_id){
             }
             it = jobs_list.erase(it);
+        }
+        else if(retval == -1){
+            perror("smash error: waitpid failed during status check");
         }
         else{
             ++it;
@@ -233,6 +242,15 @@ void JobsList::removeFinishedJobs() {
         }
     }
 
+}
+
+JobsList::JobEntry JobsList::getJobById(int jobId) {
+    for(auto& job : jobs_list){
+        if(job.job_id == jobId){
+            return job;
+        }
+    }
+    throw;
 }
 
 PwdCommand::PwdCommand(const char* cmd_line, char** cmd_arg , int arg_vec_size, SmallShell* shell): BuiltInCommand(cmd_line), shell(shell){
@@ -343,5 +361,81 @@ void SmallShell::printJobs() {
                 nullptr),job_list.jobs_list[i].start_time) <<" secs ";
         if (job_list.jobs_list[i].is_stopped) cout << "(stopped)";
         cout<< endl;
+    }
+}
+
+JobsList::JobEntry SmallShell::getJob(int job_id) {
+    return job_list.getJobById(job_id);
+}
+
+KillCommand::KillCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell):BuiltInCommand(cmd_line),shell(shell) {
+    std::string killnum, cmdjob;
+    int signum;
+    if(cmd_arg[1] != nullptr){
+        killnum = cmd_arg[1];
+        if(killnum.find_first_of('-') != 0){
+            status = SyntaxError;
+        }
+        killnum = killnum.substr(1);
+        try{
+            signum = std::stoi(killnum);
+            signal = signum;
+        }
+        catch(...){
+            status = SyntaxError;
+        }
+        if(cmd_arg[2] != nullptr){
+            try{
+                cmdjob = cmd_arg[2];
+                job_id = std::stoi(cmdjob);
+            }
+            catch(...){
+                status = SyntaxError;
+            }
+        }
+
+    }
+
+
+}
+
+void KillCommand::execute(){
+    JobsList::JobEntry job;
+    if(status == SyntaxError){
+        cout << "smash error: kill: invalid arguments" << endl;
+        return;
+    }
+    try{
+        job = shell->getJob(job_id);
+    }
+    catch(...){
+        cout << "smash error: kill: job-id " << job_id << " does not exist" << endl;
+        return;
+    }
+    if(kill(job.getPid(),signal)==-1){
+        perror("smash error: failed to send signal");
+        return;
+    }
+    cout << "signal number " << signal << " was sent to pid " << job.getPid() << endl;
+
+}
+
+BackgroundCommand::BackgroundCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell) : BuiltInCommand(cmd_line),shell(shell) {
+    if(cmd_arg[1] == nullptr){
+        job_id = -1;
+    }
+    else{
+        try{
+            job_id = stoi(cmd_arg[2]);
+        }
+        catch(...) {
+            syntax_error = true;
+        }
+    }
+
+}
+void BackgroundCommand::execute() {
+    if(syntax_error){
+        cout << "smash error: bg: invalid arguments" << endl;
     }
 }
