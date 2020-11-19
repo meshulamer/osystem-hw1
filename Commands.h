@@ -82,7 +82,7 @@ public:
         int pid;
         bool is_finished;
         bool is_stopped;
-        char cmd_line[COMMAND_MAX_ARGS];
+        char cmd_line[COMMAND_ARGS_MAX_LENGTH];
     public:
         friend class JobsList;
         friend class SmallShell;
@@ -172,7 +172,7 @@ public:
         return instance;
     }
 
-    void addJob(int pid, time_t startime);
+    void addJob(int pid, time_t startime, char* cmd_line);
 
     char *cdret() {
         if (old_dir_exist) {

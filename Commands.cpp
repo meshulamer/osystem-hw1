@@ -125,6 +125,9 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
     else if (cmd_s.find("cd") == 0){
         rtnCmd = new ChangeDirCommand(cmd_line,arg, arg_size, this);
     }
+    else if (cmd_s.find("jobs") == 0){
+        rtnCmd = new JobsCommand(cmd_line,arg, arg_size, this);
+    }
     else{
         rtnCmd = new ExternalCommand(cmd_line,arg, arg_size, this);
     }
@@ -205,8 +208,10 @@ void JobsList::addJob(int pid, time_t startime, char* com) {
 }
 
 void JobsList::removeFinishedJobs() {
+    int status;
     for (auto it = jobs_list.begin(); it != jobs_list.end();){
-        if(waitpid(it->pid,nullptr,WNOHANG)>0){
+        status = waitpid(it->pid,&status,WNOHANG);
+        if(status >1){
             if(it->job_id == current_max_job_id){
             }
             it = jobs_list.erase(it);
@@ -215,12 +220,17 @@ void JobsList::removeFinishedJobs() {
             ++it;
         }
     }
-    for(auto& job : jobs_list){
-        int max =0;
-        if (job.job_id>max){
-            max = job.job_id;
+    if(jobs_list.size()==0){
+        current_max_job_id =0;
+    }
+    else {
+        for (auto &job : jobs_list) {
+            int max = 0;
+            if (job.job_id > max) {
+                max = job.job_id;
+            }
+            current_max_job_id = max;
         }
-        current_max_job_id = max;
     }
 
 }
@@ -313,7 +323,7 @@ void ExternalCommand::execute() {
             waitpid(pid, nullptr, 0);
         }
         else{
-            shell->addJob(pid, startime);
+            shell->addJob(pid, startime, cmd_string);
         }
     }
 }
@@ -327,8 +337,9 @@ void JobsCommand::execute() {
 
 void SmallShell::printJobs() {
     std::sort(job_list.jobs_list.begin(),job_list.jobs_list.end(),JobNuGreaterThen);
+    cout << job_list.jobs_list.size();
     for(int i=0; i< job_list.jobs_list.size(); i++){
-        cout<< "[" << job_list.jobs_list[i].job_id << "] "+ job_list.jobs_list[i].cmd_line + " : " << difftime(time(
+        cout<< "[" << job_list.jobs_list[i].job_id << "] "<< job_list.jobs_list[i].cmd_line << " : " << difftime(time(
                 nullptr),job_list.jobs_list[i].start_time) <<" secs ";
         if (job_list.jobs_list[i].is_stopped) cout << "(stopped)";
         cout<< endl;
