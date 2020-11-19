@@ -30,11 +30,10 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 
 #define DEBUG_PRINT cerr << "DEBUG: "
 
-#define EXEC(path, arg) \
-  execvp((path), (arg));
+#define EXEC(path, arg)
 
   int JobNuGreaterThen(JobsList::JobEntry &a, JobsList::JobEntry &b){
-      return a.pid - b.pid;
+      return (b.pid - a.pid) > 0;
   }
 string _ltrim(const std::string& s)
 {
@@ -215,10 +214,19 @@ void JobsList::addJob(int pid, time_t startime, char* com) {
 
 void JobsList::removeFinishedJobs() {
     int retval =0;
+    int new_max =0;
     for (auto it = jobs_list.begin(); it != jobs_list.end();){
+        /*if(it->is_stopped){          ///Might not be necesarry and is casuing problems
+            ++it;
+            continue;
+        }*/
         retval = waitpid(it->pid,NULL,WNOHANG);
         if(retval > 0){
-            if(it->job_id == current_max_job_id){
+            try{
+            stopped_jobs.remove(it -> pid);
+            }
+            catch(...){
+                ///Element not in the list. Continue
             }
             it = jobs_list.erase(it);
         }
@@ -226,8 +234,10 @@ void JobsList::removeFinishedJobs() {
             perror("smash error: waitpid failed during status check");
         }
         else{
+            if (it->job_id > new_max) new_max = it -> job_id;
             ++it;
         }
+        current_max_job_id = new_max;
     }
     if(jobs_list.size()==0){
         current_max_job_id =0;
@@ -250,7 +260,7 @@ JobsList::JobEntry JobsList::getJobById(int jobId) {
             return job;
         }
     }
-    throw;
+    throw "Doesnt Exist";
 }
 
 int SmallShell::getCurrMaxJobId() {
@@ -342,7 +352,12 @@ ExternalCommand::ExternalCommand(const char *cmd_line, char **cmd_arg, int arg_v
 }
 
 void ExternalCommand::execute() {
-    char *execv_args[] = {BASH_PATH, "-c", cmd_string, nullptr};
+    char exec_arg[COMMAND_ARGS_MAX_LENGTH];
+    strcpy(exec_arg,cmd_string);
+    if(exec_arg[0] != '\000'){
+        _removeBackgroundSign(exec_arg);
+    }
+    char *execv_args[] = {BASH_PATH, "-c", exec_arg, nullptr};
     time_t startime = time(NULL);
     int pid = fork();
     if (pid == 0) {
@@ -370,7 +385,6 @@ void JobsCommand::execute() {
 
 void SmallShell::printJobs() {
     std::sort(job_list.jobs_list.begin(),job_list.jobs_list.end(),JobNuGreaterThen);
-    cout << job_list.jobs_list.size();
     for(int i=0; i< job_list.jobs_list.size(); i++){
         cout<< "[" << job_list.jobs_list[i].job_id << "] "<< job_list.jobs_list[i].cmd_line << " : " << difftime(time(
                 nullptr),job_list.jobs_list[i].start_time) <<" secs ";
@@ -381,6 +395,33 @@ void SmallShell::printJobs() {
 
 JobsList::JobEntry SmallShell::getJob(int job_id) {
     return job_list.getJobById(job_id);
+}
+
+void SmallShell::JobHalted(int jobId) {
+    auto it = job_list.jobs_list.begin();
+    while(it != job_list.jobs_list.end()){
+        if( it->job_id != jobId) ++it;
+        else{
+            assert(!it->is_stopped);
+            it->is_stopped = true;
+            job_list.stopped_jobs.push_back(jobId);
+            return;
+        }
+    }
+    throw "Doesnt Exist";
+}
+void SmallShell::JobContinued(int jobId) {
+    auto it = job_list.jobs_list.begin();
+    while (it != job_list.jobs_list.end()) {
+        if (it->job_id != jobId) ++it;
+        else {
+            assert(it->is_stopped);
+            it->is_stopped = false;
+            job_list.stopped_jobs.remove(jobId);
+            return;
+        }
+    }
+    throw "Doesnt Exist";
 }
 
 KillCommand::KillCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell):BuiltInCommand(cmd_line),shell(shell) {
@@ -427,9 +468,28 @@ void KillCommand::execute(){
         cout << "smash error: kill: job-id " << job_id << " does not exist" << endl;
         return;
     }
-    if(kill(job.getPid(),signal)==-1){
+    pid_t job_pid = job.getPid();
+    if(kill(job_pid,signal)==-1){
         perror("smash error: failed to send signal");
         return;
+    }
+    if(signal == SIGSTOP || signal ==  SIGTSTP){
+        try{
+            shell->JobHalted(job_id);
+        }
+        catch(...){
+            assert(false);/// Cannot happen. we just checked that it exists
+            return;
+        }
+    }
+    else if(signal == SIGCONT){
+        try{
+            shell->JobContinued(job_id);
+        }
+        catch(...){
+            assert(false);/// Cannot happen. we just checked that it exists
+            return;
+        }
     }
     cout << "signal number " << signal << " was sent to pid " << job.getPid() << endl;
 
@@ -457,7 +517,7 @@ void ForegroundCommand::execute() {
     else if(shell->getJobsListSize() == 0){
         cout << "smash error: fg: jobs list is empty" << endl;
     }
-    else if(//the job doest not exists do you shit)
+    //else if(//the job doest not exists do you shit)
 
 }
 
@@ -467,7 +527,7 @@ BackgroundCommand::BackgroundCommand(const char *cmd_line, char **cmd_arg, int a
     }
     else{
         try{
-            job_id = stoi(cmd_arg[2]);
+            job_id = stoi(cmd_arg[1]);
         }
         catch(...) {
             syntax_error = true;
@@ -476,7 +536,48 @@ BackgroundCommand::BackgroundCommand(const char *cmd_line, char **cmd_arg, int a
 
 }
 void BackgroundCommand::execute() {
-    if(syntax_error){
+    if (syntax_error) {
         cout << "smash error: bg: invalid arguments" << endl;
+        return;
+    }
+    shell-> returnFromBackground(job_id);
+}
+
+void SmallShell::returnFromBackground(int jobId) {
+    JobsList::JobEntry job{};
+    if(jobId != -1){  ///Return last stopped job
+        try{
+            job = getJob(jobId);
+        }
+        catch(...){
+            cout << "smash error: bg: job-id " << jobId << " does not exist" << endl;
+            return;
+        }
+        if(job.is_stopped){
+            kill(SIGCONT,job.pid);
+            JobContinued(jobId);
+        }
+        else{ ///Job exists but not stopped
+            cout << "smash error: bg: job-id " << job.job_id <<" is already running in the background" << endl;
+        }
+        return;
+    }
+    else{
+        if(job_list.stopped_jobs.empty()){
+            cout << "smash error: bg: there is no stopped jobs to resume" << endl;
+            return;
+        }
+        else{
+            jobId = job_list.stopped_jobs.front();
+            try{
+                job = getJob(jobId);
+            }
+            catch(...){
+                assert(false);/// Cannot happen. Exists in stop and therefore exists in jobs
+            }
+            kill(SIGCONT,job.pid);
+            JobContinued(jobId);
+
+        }
     }
 }

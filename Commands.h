@@ -4,6 +4,7 @@
 #include <vector>
 #include <string.h>
 #include <time.h>
+#include <list>
 
 #define COMMAND_ARGS_MAX_LENGTH (200)
 #define COMMAND_MAX_ARGS (20)
@@ -95,6 +96,7 @@ public:
 private:
     int current_max_job_id = 0;
     std::vector<JobEntry> jobs_list;
+    std::list<int> stopped_jobs;
 public:
     friend class SmallShell;
     JobsList(){
@@ -184,9 +186,10 @@ public:
         // Instantiated on first use.
         return instance;
     }
-
+    void JobHalted(int jobId);
+    void JobContinued(int jobId);
     void addJob(int pid, time_t startime, char* cmd_line);
-
+    void returnFromBackground(int jobId);
     char *cdret() {
         if (old_dir_exist) {
             return old_dir;
