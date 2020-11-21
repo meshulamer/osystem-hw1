@@ -68,8 +68,11 @@ class ShowPidCommand : public BuiltInCommand {
 
 class JobsList;
 class QuitCommand : public BuiltInCommand {
-// TODO: Add your data members public:
-  QuitCommand(const char* cmd_line, JobsList* jobs);
+private:
+    SmallShell* shell;
+    bool kill_flag;
+public:
+  QuitCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell);
   virtual ~QuitCommand() {}
   void execute() override;
 };
@@ -89,6 +92,8 @@ public:
         friend class SmallShell;
         friend int JobNuGreaterThen(JobsList::JobEntry &a, JobsList::JobEntry &b);
         int getPid(){return pid;};
+        bool IsStopped();
+
 
 
     };
@@ -108,7 +113,7 @@ public:
     void killAllJobs();
     void removeFinishedJobs();
     JobEntry getJobById(int jobId);
-    void removeJobById(int jobId);
+    void removeJobById(int job_id);
     JobEntry * getLastJob(int* lastJobId);
     JobEntry *getLastStoppedJob(int *jobId);
     friend int JobNuGreaterThen(JobsList::JobEntry &a, JobsList::JobEntry &b);
@@ -173,7 +178,6 @@ public:
     void cleanup();
     void printJobs();
     void chprompt(std::string new_prompt);
-
     Command *CreateCommand(const char *cmd_line);
     int getCurrMaxJobId();
     void setCurrMaxJobIdBy(int add_val);
@@ -187,25 +191,24 @@ public:
         return instance;
     }
     void JobHalted(int jobId);
+    void KillEveryOne();
+    void printBeforeQuit();
     void JobContinued(int jobId);
     void addJob(int pid, time_t startime, char* cmd_line);
     void returnFromBackground(int jobId);
+    void moveJobToForeground(int job_id);
     char *cdret() {
         if (old_dir_exist) {
             return old_dir;
         }
         return nullptr;
     }
-
     void update_old_dir(char *updated_old_dir) {
         strcpy(old_dir, updated_old_dir);
         this->old_dir_exist = true;
     }
-
     std::string promptDisplay() const;
-
     ~SmallShell();
-
     void executeCommand(const char *cmd_line);
     JobsList::JobEntry getJob(int job_id);
 };
