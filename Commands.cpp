@@ -11,10 +11,15 @@
 #include <complex>
 #include "Commands.h"
 #include <algorithm>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #define BASH_PATH "C:/cygwin64/bin/bash.exe"
-using namespace std;
+#define WRITE_PERMISSION 0222
 
+using namespace std;
+void isSpecial(int* redir, int* pipe, char** arg, int arg_size);
 const std::string WHITESPACE = " \n\r\t\f\v";
 
 #if 0
@@ -106,12 +111,21 @@ void SmallShell::chprompt(std::string new_prompt) {
 * Creates and returns a pointer to Command class which matches the given command line (cmd_line)
 */
 Command * SmallShell::CreateCommand(const char* cmd_line) {
-    char* arg[20];
+    int pipecommand = -1;
+    int redirection_command = -1;
+    char* arg[COMMAND_MAX_ARGS];
     int arg_size =_parseCommandLine(cmd_line, arg);
     string cmd_s = string(cmd_line);
     cmd_s = _trim(cmd_s);
+    isSpecial(&redirection_command, &pipecommand, arg, arg_size);
     Command* rtnCmd = nullptr;
-    if (cmd_s.find("pwd") == 0) {
+    if(redirection_command != -1){
+        rtnCmd = new RedirectionCommand(cmd_line, redirection_command ,this);
+    }
+    else if(pipecommand != -1){
+        rtnCmd = nullptr;
+    }
+    else if (cmd_s.find("pwd") == 0) {
         rtnCmd = new PwdCommand(cmd_line,arg, arg_size, this);
     } else if (cmd_s.find("chprompt") == 0) {
         rtnCmd = new ChpromptCommand(cmd_line,arg, arg_size, this);
@@ -147,6 +161,13 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
         free(arg[i]);
     }
     return rtnCmd;
+}
+
+void isSpecial(int* redir, int* pipe, char** arg, int arg_size){
+    for(int i =0; i< arg_size; i++){
+        if(strcmp(arg[i],"|")==0 || strcmp(arg[i],"|&")==0) *pipe = strcmp(arg[i],"|&")==0;
+        if(strcmp(arg[i],">")==0 ||strcmp(arg[i],">>")==0) *redir = strcmp(arg[i],">>")==0;
+    }
 }
 
 std::string SmallShell::promptDisplay() const {
@@ -628,8 +649,8 @@ void SmallShell::returnFromBackground(int jobId) {
         }
         else{ ///Job exists but not stopped
             cout << "smash error: bg: job-id " << job.job_id <<" is already running in the background" << endl;
+            return;
         }
-        return;
     }
     else{
         if(job_list.stopped_jobs.empty()){
@@ -646,9 +667,9 @@ void SmallShell::returnFromBackground(int jobId) {
             }
             kill(SIGCONT,job.pid);
             JobContinued(jobId);
-
         }
     }
+    cout << job.cmd_line << " : " << job.pid << endl;
 }
 
 QuitCommand::QuitCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell) : BuiltInCommand(cmd_line), shell(shell) {
@@ -667,4 +688,26 @@ void QuitCommand::execute() {
         shell->KillEveryOne();
     }
     kill(getpid(), SIGKILL);
+}
+
+RedirectionCommand::RedirectionCommand(const char* cmd_line, int append, SmallShell* shell) : Command(cmd_line), append(append), shell(shell) {
+    std::string cmd1 = std::string(cmd_line);
+    std::string cmd2 = std::string(cmd_line);
+    cmd1 = cmd1.substr(0, cmd1.find_first_of(">")-1);
+    output_path = cmd2.substr(cmd2.find_last_of(">")+1);
+    char temp_cmd[COMMAND_ARGS_MAX_LENGTH];
+    strcpy(temp_cmd, cmd1.c_str());
+    cmd = shell->CreateCommand(temp_cmd);
+}
+
+void RedirectionCommand::execute() {
+    int stdout_copy = dup(1);
+    close(1);
+    int oflags = append ? (O_CREAT|O_APPEND) : O_CREAT;
+    int fdt_i = open(output_path.c_str(), O_WRONLY|oflags, WRITE_PERMISSION);
+    assert(fdt_i == 1);
+    cmd->execute();
+    close(1);
+    dup2(stdout_copy, 1);
+    close(stdout_copy);
 }

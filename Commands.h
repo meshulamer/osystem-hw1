@@ -8,7 +8,6 @@
 
 #define COMMAND_ARGS_MAX_LENGTH (200)
 #define COMMAND_MAX_ARGS (20)
-#define HISTORY_MAX_RECORDS (50)
 #define MAX_BUFFER_LENGTH (128)
 class SmallShell;
 class Command {
@@ -50,9 +49,12 @@ class PipeCommand : public Command {
 };
 
 class RedirectionCommand : public Command {
- // TODO: Add your data members
+    bool append = false;
+    SmallShell *shell;
+    Command* cmd;
+    std::string output_path;
  public:
-  explicit RedirectionCommand(const char* cmd_line);
+  explicit RedirectionCommand(const char* cmd_line, int index_of_redir_sign, SmallShell* shell);
   virtual ~RedirectionCommand() {}
   void execute() override;
   //void prepare() override;
