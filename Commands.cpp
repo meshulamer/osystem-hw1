@@ -16,7 +16,6 @@
 #include <fcntl.h>
 
 #define BASH_PATH "C:/cygwin64/bin/bash.exe"
-#define WRITE_PERMISSION 0222
 
 using namespace std;
 void isSpecial(int* redir, int* pipe, char** arg, int arg_size);
@@ -125,36 +124,39 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
     else if(pipecommand != -1){
         rtnCmd = nullptr;
     }
-    else if (cmd_s.find("pwd") == 0) {
-        rtnCmd = new PwdCommand(cmd_line,arg, arg_size, this);
-    } else if (cmd_s.find("chprompt") == 0) {
-        rtnCmd = new ChpromptCommand(cmd_line,arg, arg_size, this);
-    } else if (cmd_s.find("ls") == 0) {
+    else if (strcmp(arg[0], "pwd") == 0) {
+        rtnCmd = new PwdCommand(cmd_line, arg, arg_size, this);
+    } else if (strcmp(arg[0], "chprompt") == 0) {
+        rtnCmd = new ChpromptCommand(cmd_line, arg, arg_size, this);
+    } else if (strcmp(arg[0], "ls") == 0) {
         rtnCmd = new LsCommand(arg[0], this);
     }
-    else if (cmd_s.find("showpid") == 0) {
+    else if (strcmp(arg[0], "showpid") == 0) {
         rtnCmd = new ShowPidCommand(cmd_line);
     }
-    else if (cmd_s.find("cd") == 0){
-        rtnCmd = new ChangeDirCommand(cmd_line,arg, arg_size, this);
+    else if (strcmp(arg[0], "cd") == 0){
+        rtnCmd = new ChangeDirCommand(cmd_line, arg, arg_size, this);
     }
-    else if (cmd_s.find("jobs") == 0){
-        rtnCmd = new JobsCommand(cmd_line,arg, arg_size, this);
+    else if (strcmp(arg[0], "jobs") == 0){
+        rtnCmd = new JobsCommand(cmd_line, arg, arg_size, this);
     }
-    else if (cmd_s.find("kill") == 0){
-        rtnCmd = new KillCommand(cmd_line,arg, arg_size, this);
+    else if (strcmp(arg[0], "kill") == 0){
+        rtnCmd = new KillCommand(cmd_line, arg, arg_size, this);
     }
-    else if (cmd_s.find("bg") == 0){
-        rtnCmd = new BackgroundCommand(cmd_line,arg, arg_size, this);
+    else if (strcmp(arg[0], "bg") == 0){
+        rtnCmd = new BackgroundCommand(cmd_line, arg, arg_size, this);
     }
-    else if (cmd_s.find("fg") == 0) {
+    else if (strcmp(arg[0], "fg") == 0) {
         rtnCmd = new ForegroundCommand(cmd_line, arg, arg_size, this);
     }
-    else if (cmd_s.find("quit") == 0) {
+    else if (strcmp(arg[0], "quit") == 0) {
         rtnCmd = new QuitCommand(cmd_line, arg, arg_size, this);
     }
+    else if (strcmp(arg[0], "timeout") == 0){
+        rtnCmd = new TimeoutCommand(cmd_line, arg, arg_size, this);
+    }
     else{
-        rtnCmd = new ExternalCommand(cmd_line,arg, arg_size, this);
+        rtnCmd = new ExternalCommand(cmd_line, arg, arg_size, this);
     }
     for(int i=0; i<arg_size; i++) {
         assert(arg[i] != NULL);
@@ -411,13 +413,24 @@ void ExternalCommand::execute() {
         }
     }
     else {
-        if (!bg_cmd) {
-            waitpid(pid, nullptr, 0);
-        }
-        else{
+        int job_id = 0;
+        if(bg_cmd){
             shell->addJob(pid, startime, cmd_string);
+            job_id = shell -> getCurrMaxJobId();
+        }
+        if(isTimed()){
+            shell -> addTimed(bg_cmd,startime,pid,job_id, getDuration());
+            alarm(getDuration());
+        }
+        if(!bg_cmd){
+            waitpid(pid, nullptr, 0);
+            ///removedtimed()
         }
     }
+
+    /// In cleanup (Jobs) remove jobs from timedjoblist if they exist there
+    ///addTimed removed timed
+    ///revist handler
 }
 
 JobsCommand::JobsCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell):BuiltInCommand(cmd_line),shell(shell) {
@@ -672,6 +685,28 @@ void SmallShell::returnFromBackground(int jobId) {
     cout << job.cmd_line << " : " << job.pid << endl;
 }
 
+void SmallShell::AlarmTriggered() {
+    for(auto it = TimedJobsList.begin(); it!=TimedJobsList.end(); ){
+        if(difftime(time(nullptr), it->startime) >= it ->time_to_stop){
+            if(it->runs_in_background){
+                try {
+                    job_list.removeJobById(it->jobid);
+                }
+                catch(...){
+                    assert(false);
+                }
+            }
+            pid_t pid = it -> pid;
+            it = TimedJobsList.erase(it);
+            if(pid != getpid()) {
+                kill(pid, SIGKILL);
+            }
+            break;
+        }
+        ++it;
+    }
+}
+
 QuitCommand::QuitCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell) : BuiltInCommand(cmd_line), shell(shell) {
     kill_flag = false;
     if(arg_vec_size > 1) {
@@ -698,16 +733,66 @@ RedirectionCommand::RedirectionCommand(const char* cmd_line, int append, SmallSh
     char temp_cmd[COMMAND_ARGS_MAX_LENGTH];
     strcpy(temp_cmd, cmd1.c_str());
     cmd = shell->CreateCommand(temp_cmd);
+    for(int i=0; i < output_path.size(); i++){
+        if(output_path.find_first_of(' ') == 0){
+            output_path = output_path.substr(1);
+        }
+        else{
+            break;
+        }
+    }
 }
 
 void RedirectionCommand::execute() {
     int stdout_copy = dup(1);
     close(1);
-    int oflags = append ? (O_CREAT|O_APPEND) : O_CREAT;
-    int fdt_i = open(output_path.c_str(), O_WRONLY|oflags, WRITE_PERMISSION);
+    int oflags = append ? (O_WRONLY|O_APPEND|O_CREAT) : O_WRONLY|O_CREAT;
+    int cflag = S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH|S_IXOTH;
+    int fdt_i = open(output_path.c_str(), oflags, 0666);
     assert(fdt_i == 1);
-    cmd->execute();
+    if (-1 != fdt_i){
+        cmd->execute();
+    }
+    else{
+        perror("smash error: opening file failed");
+    }
     close(1);
     dup2(stdout_copy, 1);
     close(stdout_copy);
 }
+
+TimeoutCommand::TimeoutCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell): BuiltInCommand(cmd_line),
+                shell(shell){
+    if(arg_vec_size < 2){
+        syntax_error = true;
+    }
+    else {
+        try {
+            duration = stoi(cmd_arg[1]);
+        }
+        catch(...){
+            syntax_error = true;
+        }
+        std::string tempstr = cmd_line;
+        int pos = tempstr.find_first_of(duration);
+        pos += std::string(cmd_arg[2]).size();
+        tempstr = tempstr.substr(pos);
+        tempstr = _ltrim(tempstr);
+        cmd = shell -> CreateCommand(tempstr.c_str());
+        cmd -> setIsTimed(duration);
+    }
+    if(arg_vec_size == 2){
+        no_command = true;
+    }
+}
+
+void TimeoutCommand::execute() {
+    if(syntax_error){
+        ///Do syntax error
+    }
+    if(no_command){
+        ///Do no command
+    }
+    cmd-> execute();
+}
+

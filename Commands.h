@@ -11,6 +11,9 @@
 #define MAX_BUFFER_LENGTH (128)
 class SmallShell;
 class Command {
+private:
+    bool is_timeout_command = false;
+    unsigned int duration = 0;
 public:
     char cmd_string[COMMAND_ARGS_MAX_LENGTH];
     Command(const char *cmd_line){
@@ -18,6 +21,16 @@ public:
     }
     virtual ~Command() {};
     virtual void execute() = 0;
+    bool isTimed(){
+        return is_timeout_command;
+    }
+    void setIsTimed(unsigned int set_duration){
+        is_timeout_command = true;
+        duration = set_duration;
+    }
+    unsigned int getDuration(){
+        return duration;
+    }
     //virtual void prepare();
     //virtual void cleanup(){};
     // TODO: Add your extra methods if needed
@@ -55,7 +68,11 @@ class RedirectionCommand : public Command {
     std::string output_path;
  public:
   explicit RedirectionCommand(const char* cmd_line, int index_of_redir_sign, SmallShell* shell);
-  virtual ~RedirectionCommand() {}
+  virtual ~RedirectionCommand() {
+      if(cmd != nullptr){
+          delete cmd;
+      }
+  }
   void execute() override;
   //void prepare() override;
   //void cleanup() override;
@@ -79,6 +96,17 @@ public:
   void execute() override;
 };
 
+class TimedJob{
+public:
+    const bool runs_in_background;
+    const time_t startime;
+    const pid_t pid;
+    const int jobid;
+    const unsigned int duration;
+public:
+    TimedJob(bool background, time_t startime, pid_t pid, int jobid, unsigned int time_to_stop) : runs_in_background(background),
+    startime(startime), pid(pid), jobid(jobid), duration(time_to_stop){};
+};
 class JobsList {
 
 public:
@@ -165,7 +193,21 @@ class BackgroundCommand : public BuiltInCommand {
   void execute() override;
 };
 
-// TODO: add more classes if needed 
+class TimeoutCommand : public BuiltInCommand {
+    SmallShell* shell;
+    bool syntax_error = false;
+    bool no_command = false;
+    Command* cmd = nullptr;
+    unsigned int duration;
+public:
+    TimeoutCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell);
+    virtual ~TimeoutCommand() {
+        if(cmd != nullptr){
+            delete cmd;
+        }
+    }
+    void execute() override;
+};
 // maybe ls, timeout ?
 
 class SmallShell {
@@ -174,6 +216,7 @@ private:
     char old_dir[128];
     bool old_dir_exist = false;
     JobsList job_list = JobsList();
+    std::vector<TimedJob> TimedJobsList;
     SmallShell();
 
 public:
@@ -213,6 +256,8 @@ public:
     ~SmallShell();
     void executeCommand(const char *cmd_line);
     JobsList::JobEntry getJob(int job_id);
+    void AlarmTriggered();
+    void addTimed(bool runs_in_backround, time_t timestamp,pid_t pid,int job_id, unsigned int duration);
 };
 
 class ChpromptCommand : public BuiltInCommand{
