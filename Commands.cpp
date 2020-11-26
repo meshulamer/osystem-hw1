@@ -20,6 +20,7 @@
 using namespace std;
 void isSpecial(int* redir, int* pipe, char** arg, int arg_size);
 const std::string WHITESPACE = " \n\r\t\f\v";
+pid_t executePiped(Command* cmd,int* filedes,int channel1);
 
 #if 0
 #define FUNC_ENTRY()  \
@@ -122,7 +123,7 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
         rtnCmd = new RedirectionCommand(cmd_line, redirection_command ,this);
     }
     else if(pipecommand != -1){
-        rtnCmd = nullptr;
+        rtnCmd = new PipeCommand(cmd_line, pipecommand, this);
     }
     else if(arg_size == 0 || cmd_s.size() == 0){
         rtnCmd = new ExternalCommand(cmd_s.c_str(), arg, 0, this);
@@ -207,13 +208,14 @@ ChpromptCommand::ChpromptCommand(const char* cmd_line, char** cmd_arg , int arg_
 }
 
 
-void ChpromptCommand::execute() {
+pid_t ChpromptCommand::execute() {
     shell->chprompt(prompt);
+    return 0;
 }
 
 LsCommand::LsCommand(const char* cmd_line, SmallShell* shell): BuiltInCommand(cmd_line), shell(shell) {}
 
-void LsCommand::execute() {
+pid_t LsCommand::execute() {
     struct dirent **namelist;
     int n;
     n = scandir(".", &namelist, NULL, alphasort);
@@ -228,12 +230,14 @@ void LsCommand::execute() {
         i++;
     }
     free(namelist);
+    return 0;
 }
 
 ShowPidCommand::ShowPidCommand(const char *cmd_line) : BuiltInCommand(cmd_line) {}
 
-void ShowPidCommand::execute() {
+pid_t ShowPidCommand::execute() {
     cout << getpid() << endl;
+    return 0;
 }
 
 void JobsList::addJob(int pid, time_t startime, char* com, bool is_timed) {
@@ -351,8 +355,9 @@ PwdCommand::PwdCommand(const char* cmd_line, char** cmd_arg , int arg_vec_size, 
 }
 
 
-void PwdCommand::execute() {
+pid_t PwdCommand::execute() {
     cout << path << endl;
+    return 0;
 }
 
 ChangeDirCommand::ChangeDirCommand(const char* cmd_line, char** cmd_arg , int arg_vec_size, SmallShell* shell): BuiltInCommand(cmd_line), shell(shell) {
@@ -368,16 +373,16 @@ ChangeDirCommand::ChangeDirCommand(const char* cmd_line, char** cmd_arg , int ar
     }
 }
 
-void ChangeDirCommand::execute() {
+pid_t ChangeDirCommand::execute() {
     if(action == SmashError){
         cout << to_print << endl;
-        return;
+        return 0;
     }
     else if (strcmp(new_dir, "-") == 0) {
         char *old_dir = shell->cdret();
         if (old_dir == nullptr) {
             cout << "smash error: cd: OLDPWD not set" << endl;
-            return;
+            return 0;
         }
         else{
             char buf[128];
@@ -387,7 +392,7 @@ void ChangeDirCommand::execute() {
             }
             else{
                 perror("shell error: cd: not able to change directory");
-                return;
+                return 0;
             }
         }
     }
@@ -399,9 +404,10 @@ void ChangeDirCommand::execute() {
         }
         else{
             perror("shell error: cd: not able to change directory");
-            return;
+            return 0;
         }
     }
+    return 0;
 }
 
 ExternalCommand::ExternalCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell): Command(cmd_line), shell(shell) {
@@ -412,7 +418,7 @@ ExternalCommand::ExternalCommand(const char *cmd_line, char **cmd_arg, int arg_v
     }
 }
 
-void ExternalCommand::execute() {
+pid_t ExternalCommand::execute() {
     char exec_arg[COMMAND_ARGS_MAX_LENGTH];
     strcpy(exec_arg,cmd_string);
     if(exec_arg[0] != '\000'){
@@ -422,6 +428,10 @@ void ExternalCommand::execute() {
     time_t startime = time(NULL);
     int pid = fork();
     if (pid == 0) {
+        if(pipeuse != NOTUSED){
+            close(pipe_args[0]);
+            close(pipe_args[1]);
+        }
         if (execv(execv_args[0], execv_args) == -1) {
             perror("smash error: execv() failed");
             exit(1);
@@ -440,11 +450,12 @@ void ExternalCommand::execute() {
                 alarm(getDuration());
             }
         }
-        if(!bg_cmd){
+        if(!bg_cmd && pipeuse == NOTUSED){
             waitpid(pid, nullptr, 0);
             shell->removeTimedJob(pid);
         }
     }
+    return pid;
 
     /// In cleanup (Jobs) remove jobs from timedjoblist if they exist there
     ///addTimed removed timed
@@ -454,8 +465,9 @@ void ExternalCommand::execute() {
 JobsCommand::JobsCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell):BuiltInCommand(cmd_line),shell(shell) {
 
 }
-void JobsCommand::execute() {
+pid_t JobsCommand::execute() {
     shell->printJobs();
+    return 0;
 }
 
 void SmallShell::printJobs() {
@@ -549,23 +561,23 @@ KillCommand::KillCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size,
 
 }
 
-void KillCommand::execute(){
+pid_t KillCommand::execute(){
     JobsList::JobEntry job;
     if(status == SyntaxError){
         cout << "smash error: kill: invalid arguments" << endl;
-        return;
+        return 0;
     }
     try{
         job = shell->getJob(job_id);
     }
     catch(...){
         cout << "smash error: kill: job-id " << job_id << " does not exist" << endl;
-        return;
+        return 0;
     }
     pid_t job_pid = job.getPid();
     if(kill(job_pid,signal)==-1){
         perror("smash error: failed to send signal");
-        return;
+        return 0;
     }
     if(signal == SIGSTOP || signal ==  SIGTSTP){
         try{
@@ -573,7 +585,7 @@ void KillCommand::execute(){
         }
         catch(...){
             assert(false);/// Cannot happen. we just checked that it exists
-            return;
+            return 0;
         }
     }
     else if(signal == SIGCONT){
@@ -582,10 +594,11 @@ void KillCommand::execute(){
         }
         catch(...){
             assert(false);/// Cannot happen. we just checked that it exists
-            return;
+            return 0;
         }
     }
     cout << "signal number " << signal << " was sent to pid " << job.getPid() << endl;
+    return 0;
 
 }
 
@@ -606,14 +619,14 @@ ForegroundCommand::ForegroundCommand(const char *cmd_line, char **cmd_arg, int a
 }
 
 
-void ForegroundCommand::execute() {
+pid_t ForegroundCommand::execute() {
     if(syntax_error){
         cout << "smash error: fg: invalid arguments" << endl;
-        return;
+        return 0;
     }
     else if(shell->getJobsListSize() == 0){
         cout << "smash error: fg: jobs list is empty" << endl;
-        return;
+        return 0;
     }
     JobsList::JobEntry job;
     try {
@@ -621,13 +634,14 @@ void ForegroundCommand::execute() {
     }
     catch (...) {
         cout << "smash error: fg: job-id " << job_id << " does not exists" << endl;
-        return;;
+        return 0;
     }
     int i = job.getPid();
     if(job.IsStopped()) {
         shell->JobContinued(job_id);
     }
     shell->moveJobToForeground(job_id);
+    return 0;
 }
 
 void SmallShell::moveJobToForeground(int job_id) {
@@ -657,12 +671,13 @@ BackgroundCommand::BackgroundCommand(const char *cmd_line, char **cmd_arg, int a
     }
 
 }
-void BackgroundCommand::execute() {
+pid_t BackgroundCommand::execute() {
     if (syntax_error) {
         cout << "smash error: bg: invalid arguments" << endl;
-        return;
+        return 0;
     }
     shell-> returnFromBackground(job_id);
+    return 0;
 }
 
 void SmallShell::returnFromBackground(int jobId) {
@@ -746,12 +761,13 @@ QuitCommand::QuitCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size,
     }
 }
 
-void QuitCommand::execute() {
+pid_t QuitCommand::execute() {
     if(kill_flag) {
         shell->printBeforeQuit();
         shell->KillEveryOne();
     }
     kill(getpid(), SIGKILL);
+    return 0;
 }
 
 RedirectionCommand::RedirectionCommand(const char* cmd_line, int append, SmallShell* shell) : Command(cmd_line), append(append), shell(shell) {
@@ -772,7 +788,7 @@ RedirectionCommand::RedirectionCommand(const char* cmd_line, int append, SmallSh
     }
 }
 
-void RedirectionCommand::execute() {
+pid_t RedirectionCommand::execute() {
     int stdout_copy = dup(1);
     close(1);
     int oflags = append ? (O_WRONLY|O_APPEND|O_CREAT) : O_WRONLY|O_CREAT;
@@ -788,6 +804,7 @@ void RedirectionCommand::execute() {
     close(1);
     dup2(stdout_copy, 1);
     close(stdout_copy);
+    return 0;
 }
 
 TimeoutCommand::TimeoutCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell): BuiltInCommand(cmd_line),
@@ -815,14 +832,14 @@ TimeoutCommand::TimeoutCommand(const char *cmd_line, char **cmd_arg, int arg_vec
     }
 }
 
-void TimeoutCommand::execute() {
+pid_t TimeoutCommand::execute() {
     if(syntax_error){
         cout << "smash error: Timeout command syntax error" << endl;
-        return;
+        return 0;
     }
     if(no_command){
         cout << "smash error: Timeout command empty command" << endl;
-        return;
+        return 0;
     }
     cmd-> execute();
 }
@@ -852,3 +869,97 @@ time_t SmallShell::getClosestAlarmTime() {
     }
     return temp_closest_diff_time;
 }
+
+PipeCommand::PipeCommand(const char *cmd_line, int index_of_pipe_sign, SmallShell *shell)
+        : Command(cmd_line), shell(shell) {
+    std::string cmd1 = std::string(cmd_line);
+    std::string cmd2 = std::string(cmd_line);
+    if(index_of_pipe_sign == 1){
+        type = ERROR;
+    }
+    int index_of_split = cmd1.find_first_of(" |") ;
+    cmd1 = cmd1.substr(0, index_of_split);
+    bool additional_string_sub = type == ERROR;
+    cmd2 = cmd2.substr(cmd2.find_last_of("|")+ 1 + additional_string_sub);
+    _trim(cmd1);
+    _trim(cmd2);
+    for(int i=0; i < cmd2.size(); i++){
+        if(cmd2.find_first_of(' ') == 0){
+            cmd2 = cmd2.substr(1);
+        }
+        else{
+            break;
+        }
+    }
+    this -> cmd1 = shell->CreateCommand(cmd1.c_str());
+    this -> cmd2 = shell->CreateCommand(cmd2.c_str());
+}
+
+pid_t PipeCommand::execute() {
+    int filedes[2] = {0,0};
+    int  return_val;
+    return_val= pipe(filedes);
+    if(type == STANDARD){
+        cmd1->Piped(PipeUse::CMDSTDOUT,filedes);
+        cmd2->Piped(PipeUse::CMDSTDIN,filedes);
+    }
+    else{
+        cmd1->Piped(PipeUse::CMDSTDERRIN,filedes);
+        cmd2->Piped(PipeUse::CMDSTDERROUT,filedes);
+    }
+    int write_channel;
+    int read_channel;
+    if(type == STANDARD){
+        write_channel = STDOUT_FILENO;
+        read_channel = STDIN_FILENO;
+    }
+    else{
+        write_channel = STDERR_FILENO;
+        read_channel = STDIN_FILENO;
+    }
+    pid_t pid1 = executePiped(cmd1,filedes,write_channel);
+    pid_t pid2 =(cmd2,filedes,read_channel);
+    close(filedes[0]);
+    close(filedes[1]);
+    if(!cmd2->inBackground()){
+        if(!cmd1 -> inBackground()){
+            while(waitpid(pid1, nullptr, 0) == 0){
+
+            }
+            while(waitpid(pid2, nullptr, 0) == 0) {
+
+            }
+        }
+    }
+    ///wait for sons or continue depending on thier details
+    return 0;
+}
+pid_t executePiped(Command* cmd,int* filedes,int channel1){
+    int copy_channel = dup(channel1);
+    close(channel1); /// Prepare write channel and execute first program
+    dup(filedes[0]);
+    pid_t pid = cmd ->execute();
+    close(channel1);/// Fix father FDT
+    dup(copy_channel);
+    close(copy_channel);
+    return pid;
+}
+
+//
+//int original_write_copy = dup(write_channel);
+//close(write_channel); /// Prepare write channel and execute first program
+//dup(filedes[0]);
+//cmd1 ->execute();
+//close(write_channel);/// Fix father FDT
+//dup(original_write_copy);
+//close(original_write_copy);
+//int original_read_copy = dup(write_channel); /// Prepare read channel and execute second program
+//close(read_channel);
+//dup(filedes[1]);
+//cmd2 ->execute();
+//close(read_channel); /// Fix Father FDT and close father pipe
+//dup(original_read_copy);
+//close(original_read_copy);
+//close(filedes[0]);
+//close(filedes[1]);
+//

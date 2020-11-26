@@ -12,17 +12,22 @@
 #define MAX_BUFFER_LENGTH (128)
 class SmallShell;
 class Command {
+public:
+    typedef enum{NOTUSED,CMDSTDOUT,CMDSTDIN,CMDSTDERRIN,CMDSTDERROUT} PipeUse;
+    int pipe_args[2] = {0,0};
+    PipeUse pipeuse = NOTUSED;
 private:
     bool is_timeout_command = false;
     unsigned int duration = 0;
     std::string original_command;
+    bool will_start_in_background = false;
 public:
     char cmd_string[COMMAND_ARGS_MAX_LENGTH];
     Command(const char *cmd_line){
         strcpy(cmd_string,cmd_line);
     }
     virtual ~Command() {};
-    virtual void execute() = 0;
+    virtual pid_t execute() = 0;
     bool isTimed(){
         return is_timeout_command;
     }
@@ -36,6 +41,14 @@ public:
     }
     std::string originalString(){
         return original_command;
+    }
+    void Piped(PipeUse use, const int* filedes){
+        pipeuse = use;
+        pipe_args[0] = filedes[0];
+        pipe_args[1] = filedes[1];
+    }
+    bool virtual inBackground(){
+        return false;
     }
     //virtual void prepare();
     //virtual void cleanup(){};
@@ -56,15 +69,31 @@ private:
 public:
     ExternalCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell);
     virtual ~ExternalCommand() {}
-    void execute() override;
+    pid_t execute() override;
+    bool virtual inBackground() override{
+        return bg_cmd;
+    }
 };
 
 class PipeCommand : public Command {
-  // TODO: Add your data members
- public:
-  PipeCommand(const char* cmd_line);
-  virtual ~PipeCommand() {}
-  void execute() override;
+public:
+    typedef enum {STANDARD,ERROR} Type;
+private:
+    Type type = STANDARD;
+    Command* cmd1 = nullptr;
+    Command* cmd2 = nullptr;
+    SmallShell* shell;
+public:
+    PipeCommand(const char *cmd_line, int index_of_pipe_sign, SmallShell *shell);
+    virtual ~PipeCommand() {
+        if(cmd1) {
+            delete cmd1;
+        }
+        if(cmd2) {
+            delete cmd2;
+        }
+    }
+    pid_t execute() override;
 };
 
 class RedirectionCommand : public Command {
@@ -79,7 +108,7 @@ class RedirectionCommand : public Command {
           delete cmd;
       }
   }
-  void execute() override;
+  pid_t execute() override;
   //void prepare() override;
   //void cleanup() override;
 };
@@ -88,7 +117,7 @@ class ShowPidCommand : public BuiltInCommand {
  public:
   ShowPidCommand(const char* cmd_line);
   virtual ~ShowPidCommand() {}
-  void execute() override;
+  pid_t execute() override;
 };
 
 class JobsList;
@@ -99,7 +128,7 @@ private:
 public:
   QuitCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell);
   virtual ~QuitCommand() {}
-  void execute() override;
+  pid_t execute() override;
 };
 
 class TimedJob{
@@ -162,7 +191,7 @@ class JobsCommand : public BuiltInCommand {
  public:
   JobsCommand(const char* cmd_line, char** cmd_arg , int arg_vec_size, SmallShell* shell);
   virtual ~JobsCommand() {}
-  void execute() override;
+  pid_t execute() override;
 };
 
 class KillCommand : public BuiltInCommand {
@@ -177,7 +206,7 @@ private:
  public:
   KillCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell);
   virtual ~KillCommand() {}
-  void execute() override;
+  pid_t execute() override;
 };
 
 class ForegroundCommand : public BuiltInCommand {
@@ -188,7 +217,7 @@ class ForegroundCommand : public BuiltInCommand {
  public:
   ForegroundCommand(const char* cmd_line, char** cmd_arg, int arg_vec_size, SmallShell* shell);
   virtual ~ForegroundCommand() {}
-  void execute() override;
+  pid_t execute() override;
 };
 
 class BackgroundCommand : public BuiltInCommand {
@@ -198,7 +227,7 @@ class BackgroundCommand : public BuiltInCommand {
  public:
   BackgroundCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell);
   virtual ~BackgroundCommand() {}
-  void execute() override;
+  pid_t execute() override;
 };
 
 class TimeoutCommand : public BuiltInCommand {
@@ -214,7 +243,7 @@ public:
             delete cmd;
         }
     }
-    void execute() override;
+    pid_t execute() override;
 };
 // maybe ls, timeout ?
 
@@ -277,7 +306,7 @@ private:
 public:
     ChpromptCommand(const char* cmd_line, char** cmd_arg, int size, SmallShell* shell);
     ~ChpromptCommand() override = default;
-    void execute() override;
+    pid_t execute() override;
 };
 
 
@@ -288,7 +317,7 @@ private:
 public:
     LsCommand(const char* cmd_line, SmallShell* shell);
     ~LsCommand() override  = default;
-    void execute() override;
+    pid_t execute() override;
 };
 
 class PwdCommand : public BuiltInCommand{
@@ -298,7 +327,7 @@ private:
 public:
     PwdCommand(const char* cmd_line, char** cmd_arg, int size, SmallShell* shell);
     ~PwdCommand() override = default;
-    void execute() override;
+    pid_t execute() override;
 };
 
 class ChangeDirCommand : public BuiltInCommand {
@@ -311,7 +340,7 @@ private:
 public:
     ChangeDirCommand(const char* cmd_line, char** cmd_arg , int arg_vec_size, SmallShell* shell);
     virtual ~ChangeDirCommand() {};
-    void execute() override;
+    pid_t execute() override;
 };
 
 #endif //SMASH_COMMAND_H_
