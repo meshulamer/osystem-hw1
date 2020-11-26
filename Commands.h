@@ -157,10 +157,14 @@ public:
     public:
         friend class JobsList;
         friend class SmallShell;
+        friend class ExternalCommand;
+        friend void MyctrlCHandler(int signal);
         friend int JobNuGreaterThen(JobsList::JobEntry &a, JobsList::JobEntry &b);
         int getPid(){return pid;};
         bool IsStopped();
-
+        JobEntry(int pid, time_t startime, char* com, bool is_timed);
+        JobEntry() = default;
+        JobEntry& operator=(const JobEntry& other) = default;
 
 
     };
@@ -254,9 +258,12 @@ private:
     bool old_dir_exist = false;
     JobsList job_list = JobsList();
     std::vector<TimedJob> TimedJobsList;
+    JobsList::JobEntry* job_in_fg = nullptr;
     SmallShell();
 
 public:
+    friend class ExternalCommand;
+    friend void MyctrlCHandler(int signal);
     void cleanup();
     void printJobs();
     void chprompt(std::string new_prompt);
