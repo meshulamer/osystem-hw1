@@ -5,7 +5,7 @@
 #include "Commands.h"
 #include "signals.h"
 
-void sigalarmhander(int signal);
+void sigalarmhandler(int signal);
 SmallShell* shell_access = nullptr;
 
 int main(int argc, char* argv[]) {
@@ -17,11 +17,11 @@ int main(int argc, char* argv[]) {
     }
     SmallShell& smash = SmallShell::getInstance();
     shell_access = &smash;
-    struct sigaction sigalarmstruct{};
-    sigalarmstruct.sa_handler = &sigalarmhander;
-    sigalarmstruct.sa_sigaction = NULL;
-    sigalarmstruct.sa_mask = SA_NODEFER;
-    sigalarmstruct.sa_flags = SA_RESTART;
+    struct sigaction sigalarmstruct{{sigalarmhandler},SA_NODEFER,SA_RESTART};
+//    sigalarmstruct.sa_handler = sigalarmhandler;
+//    sigalarmstruct.sa_sigaction = NULL;
+//    sigalarmstruct.sa_mask = SA_NODEFER;
+//    sigalarmstruct.sa_flags = SA_RESTART;
     sigaction(SIGALRM, &sigalarmstruct, NULL);
 
     while(true) {
@@ -34,5 +34,5 @@ int main(int argc, char* argv[]) {
 }
 
 void sigalarmhandler(int signal){
-    shell_access -> AlarmTriggered();
+    shell_access -> AlarmTriggered(time(NULL));
 }

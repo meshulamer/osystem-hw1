@@ -1,6 +1,7 @@
 #ifndef SMASH_COMMAND_H_
 #define SMASH_COMMAND_H_
 
+#include <utility>
 #include <vector>
 #include <string.h>
 #include <time.h>
@@ -14,6 +15,7 @@ class Command {
 private:
     bool is_timeout_command = false;
     unsigned int duration = 0;
+    std::string original_command;
 public:
     char cmd_string[COMMAND_ARGS_MAX_LENGTH];
     Command(const char *cmd_line){
@@ -24,12 +26,16 @@ public:
     bool isTimed(){
         return is_timeout_command;
     }
-    void setIsTimed(unsigned int set_duration){
+    void setIsTimed(unsigned int set_duration, std::string original_cmd_line){
         is_timeout_command = true;
         duration = set_duration;
+        original_command = original_cmd_line;
     }
     unsigned int getDuration(){
         return duration;
+    }
+    std::string originalString(){
+        return original_command;
     }
     //virtual void prepare();
     //virtual void cleanup(){};
@@ -98,14 +104,15 @@ public:
 
 class TimedJob{
 public:
-    const bool runs_in_background;
-    const time_t startime;
-    const pid_t pid;
-    const int jobid;
-    const unsigned int duration;
+    bool runs_in_background;
+    time_t startime;
+    pid_t pid;
+    int jobid;
+    unsigned int duration;
+    std::string cmd_line;
 public:
-    TimedJob(bool background, time_t startime, pid_t pid, int jobid, unsigned int time_to_stop) : runs_in_background(background),
-    startime(startime), pid(pid), jobid(jobid), duration(time_to_stop){};
+    TimedJob(bool background, time_t startime, pid_t pid, int jobid, unsigned int time_to_stop, std::string cmd_line) : runs_in_background(background),
+    startime(startime), pid(pid), jobid(jobid), duration(time_to_stop), cmd_line(std::move(cmd_line)) {};
 };
 class JobsList {
 
@@ -117,6 +124,7 @@ public:
         bool is_finished;
         bool is_stopped;
         char cmd_line[COMMAND_ARGS_MAX_LENGTH];
+        bool is_timed = false;
     public:
         friend class JobsList;
         friend class SmallShell;
@@ -138,10 +146,10 @@ public:
         current_max_job_id = 0;
     };
     ~JobsList()= default;
-    void addJob(int pid, time_t startime, char* com);
+    void addJob(int pid, time_t startime, char* com, bool is_timed);
     void printJobsList();
     void killAllJobs();
-    void removeFinishedJobs();
+    std::vector<int>* removeFinishedJobs();
     JobEntry getJobById(int jobId);
     void removeJobById(int job_id);
     JobEntry * getLastJob(int* lastJobId);
@@ -239,7 +247,7 @@ public:
     void KillEveryOne();
     void printBeforeQuit();
     void JobContinued(int jobId);
-    void addJob(int pid, time_t startime, char* cmd_line);
+    void addJob(int pid, time_t startime, char* cmd_line, bool is_timed);
     void returnFromBackground(int jobId);
     void moveJobToForeground(int job_id);
     char *cdret() {
@@ -256,8 +264,10 @@ public:
     ~SmallShell();
     void executeCommand(const char *cmd_line);
     JobsList::JobEntry getJob(int job_id);
-    void AlarmTriggered();
-    void addTimed(bool runs_in_backround, time_t timestamp,pid_t pid,int job_id, unsigned int duration);
+    void AlarmTriggered(time_t time);
+    void addTimed(bool runs_in_backround, time_t timestamp,pid_t pid,int job_id, unsigned int duration, std::string cmd_line);
+    void removeTimedJob(int job_pid);
+    time_t getClosestAlarmTime();
 };
 
 class ChpromptCommand : public BuiltInCommand{

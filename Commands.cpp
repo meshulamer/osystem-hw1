@@ -124,6 +124,9 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
     else if(pipecommand != -1){
         rtnCmd = nullptr;
     }
+    else if(arg_size == 0 || cmd_s.size() == 0){
+        rtnCmd = new ExternalCommand(cmd_s.c_str(), arg, 0, this);
+    }
     else if (strcmp(arg[0], "pwd") == 0) {
         rtnCmd = new PwdCommand(cmd_line, arg, arg_size, this);
     } else if (strcmp(arg[0], "chprompt") == 0) {
@@ -184,12 +187,16 @@ void SmallShell::executeCommand(const char *cmd_line) {
   // Please note that you must fork smash process for some commands (e.g., external commands....)
 }
 
-void SmallShell::addJob(int pid, time_t startime, char* cmd_line) {
-    job_list.addJob(pid, startime, cmd_line);
+void SmallShell::addJob(int pid, time_t startime, char* cmd_line, bool is_timed) {
+    job_list.addJob(pid, startime, cmd_line, is_timed);
 }
 
 void SmallShell::cleanup() {
-    job_list.removeFinishedJobs();
+    std::vector<int>* removedVec = job_list.removeFinishedJobs();
+    for(int & it : *removedVec) {
+        removeTimedJob(it);
+    }
+    delete removedVec;
 }
 
 ChpromptCommand::ChpromptCommand(const char* cmd_line, char** cmd_arg , int arg_vec_size, SmallShell* shell): BuiltInCommand(cmd_line), shell(shell){
@@ -229,7 +236,7 @@ void ShowPidCommand::execute() {
     cout << getpid() << endl;
 }
 
-void JobsList::addJob(int pid, time_t startime, char* com) {
+void JobsList::addJob(int pid, time_t startime, char* com, bool is_timed) {
     JobEntry new_job = JobEntry();
     new_job.start_time = startime;
     new_job.pid = pid;
@@ -238,12 +245,14 @@ void JobsList::addJob(int pid, time_t startime, char* com) {
     new_job.is_finished = false;
     new_job.is_stopped = false;
     strcpy(new_job.cmd_line, com);
+    new_job.is_timed = is_timed;
     jobs_list.push_back(new_job);
 }
 
-void JobsList::removeFinishedJobs() {
+std::vector<int>* JobsList::removeFinishedJobs() {
     int retval =0;
     int new_max =0;
+    auto* removedVec = new std::vector<int>;
     for (auto it = jobs_list.begin(); it != jobs_list.end();){
         /*if(it->is_stopped){          ///Might not be necesarry and is casuing problems
             ++it;
@@ -252,7 +261,10 @@ void JobsList::removeFinishedJobs() {
         retval = waitpid(it->pid,NULL,WNOHANG);
         if(retval > 0){
             try{
-            stopped_jobs.remove(it -> pid);
+                if(it->is_timed){
+                    removedVec->push_back(it->job_id);
+                }
+                stopped_jobs.remove(it -> pid);
             }
             catch(...){
                 ///Element not in the list. Continue
@@ -280,7 +292,7 @@ void JobsList::removeFinishedJobs() {
             current_max_job_id = max;
         }
     }
-
+    return removedVec;
 }
 
 JobsList::JobEntry JobsList::getJobById(int jobId) {
@@ -296,11 +308,14 @@ JobsList::JobEntry JobsList::getJobById(int jobId) {
 void JobsList::removeJobById(int job_id) {
     for(auto it = jobs_list.begin(); it != jobs_list.end(); it++){
         if(it->job_id == job_id){
+            if(it->is_stopped){
+                stopped_jobs.remove(it->job_id);
+            }
             jobs_list.erase(it);
             return;
         }
     }
-    throw "Doesnt Exist";
+    //throw "Doesnt Exist";
 }
 
 
@@ -415,16 +430,19 @@ void ExternalCommand::execute() {
     else {
         int job_id = 0;
         if(bg_cmd){
-            shell->addJob(pid, startime, cmd_string);
+            shell->addJob(pid, startime, cmd_string, this->isTimed());
             job_id = shell -> getCurrMaxJobId();
         }
         if(isTimed()){
-            shell -> addTimed(bg_cmd,startime,pid,job_id, getDuration());
-            alarm(getDuration());
+            time_t closest_time = shell->getClosestAlarmTime();
+            shell -> addTimed(bg_cmd, startime,pid, job_id, getDuration(), originalString());
+            if( getDuration() < closest_time || closest_time == 0) {
+                alarm(getDuration());
+            }
         }
         if(!bg_cmd){
             waitpid(pid, nullptr, 0);
-            ///removedtimed()
+            shell->removeTimedJob(pid);
         }
     }
 
@@ -462,6 +480,7 @@ void SmallShell::printBeforeQuit() {
 JobsList::JobEntry SmallShell::getJob(int job_id) {
     return job_list.getJobById(job_id);
 }
+
 
 
 void SmallShell::KillEveryOne() {
@@ -685,25 +704,35 @@ void SmallShell::returnFromBackground(int jobId) {
     cout << job.cmd_line << " : " << job.pid << endl;
 }
 
-void SmallShell::AlarmTriggered() {
+void SmallShell::AlarmTriggered(time_t time) {
+    cleanup();
     for(auto it = TimedJobsList.begin(); it!=TimedJobsList.end(); ){
-        if(difftime(time(nullptr), it->startime) >= it ->time_to_stop){
+        if(difftime(time, it->startime) >= it ->duration){
+            pid_t  pid = it->pid;
+            std::string cmd = it->cmd_line;
             if(it->runs_in_background){
                 try {
                     job_list.removeJobById(it->jobid);
                 }
                 catch(...){
-                    assert(false);
+                    TimedJobsList.erase(it);
+                    return;
                 }
             }
-            pid_t pid = it -> pid;
             it = TimedJobsList.erase(it);
             if(pid != getpid()) {
                 kill(pid, SIGKILL);
             }
+            _rtrim(cmd);
+            cout << "smash: got an alarm" << endl;
+            cout << cmd << " timed out!" << endl;
             break;
         }
         ++it;
+    }
+    time_t temp_closest = getClosestAlarmTime();
+    if (temp_closest != 0) {
+        alarm(temp_closest);
     }
 }
 
@@ -774,12 +803,12 @@ TimeoutCommand::TimeoutCommand(const char *cmd_line, char **cmd_arg, int arg_vec
             syntax_error = true;
         }
         std::string tempstr = cmd_line;
-        int pos = tempstr.find_first_of(duration);
-        pos += std::string(cmd_arg[2]).size();
+        int pos = tempstr.find_first_of(cmd_arg[1]);
+        pos += std::string(cmd_arg[1]).size();
         tempstr = tempstr.substr(pos);
         tempstr = _ltrim(tempstr);
         cmd = shell -> CreateCommand(tempstr.c_str());
-        cmd -> setIsTimed(duration);
+        cmd -> setIsTimed(duration, cmd_line);
     }
     if(arg_vec_size == 2){
         no_command = true;
@@ -788,11 +817,38 @@ TimeoutCommand::TimeoutCommand(const char *cmd_line, char **cmd_arg, int arg_vec
 
 void TimeoutCommand::execute() {
     if(syntax_error){
-        ///Do syntax error
+        cout << "smash error: Timeout command syntax error" << endl;
+        return;
     }
     if(no_command){
-        ///Do no command
+        cout << "smash error: Timeout command empty command" << endl;
+        return;
     }
     cmd-> execute();
 }
 
+void SmallShell::addTimed(bool runs_in_backround, time_t timestamp, pid_t pid, int job_id, unsigned int duration, std::string cmd_line) {
+    TimedJob temp_timed_job = TimedJob(runs_in_backround, timestamp, pid, job_id, duration, cmd_line);
+    TimedJobsList.push_back(temp_timed_job);
+}
+
+void SmallShell::removeTimedJob(int job_pid) {
+    for(auto it = TimedJobsList.begin(); it != TimedJobsList.end();){
+        if(it->pid == job_pid){
+            TimedJobsList.erase(it);
+            return;
+        }
+        it++;
+    }
+}
+
+time_t SmallShell::getClosestAlarmTime() {
+    if(TimedJobsList.size() == 0)
+        return 0;
+    time_t temp_closest_diff_time = difftime(time(NULL), TimedJobsList.begin()->startime);
+    for(auto it = TimedJobsList.begin(); it != TimedJobsList.end(); it++) {
+        time_t curr_diff = difftime(time(NULL), it->startime);
+        temp_closest_diff_time = (curr_diff < temp_closest_diff_time) ? curr_diff : temp_closest_diff_time;
+    }
+    return temp_closest_diff_time;
+}
