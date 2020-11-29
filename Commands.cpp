@@ -27,7 +27,7 @@
 using namespace std;
 void isSpecial(int* redir, int* pipe, char** arg, int arg_size);
 const std::string WHITESPACE = " \n\r\t\f\v";
-pid_t executePiped(Command* cmd,int* filedes,int channel1);
+pid_t executePiped(Command* cmd,int* filedes,int channel1, int pipeuse);
 
 #if 0
 #define FUNC_ENTRY()  \
@@ -243,7 +243,7 @@ pid_t LsCommand::execute() {
 ShowPidCommand::ShowPidCommand(const char *cmd_line) : BuiltInCommand(cmd_line) {}
 
 pid_t ShowPidCommand::execute() {
-    cout << getpid() << endl;
+    cout << "smash pid is " << getpid() << endl;
     return 0;
 }
 
@@ -438,15 +438,9 @@ pid_t ExternalCommand::execute() {
     if (pid == 0) {
         setpgrp();
         if (pipeuse != NOTUSED) {
-            if (pipeuse == CMDSTDERROUT || pipeuse == CMDSTDOUT) {
-                close(pipe_args[0]);
-            }
-            else{
-                close(pipe_args[1]);
+            close(pipe_args[0]);
+            close(pipe_args[1]);
         }
-
-        }
-
         if (execv(execv_args[0], execv_args) == -1) {
             perror("smash error: execv() failed");
             exit(1);
@@ -478,10 +472,6 @@ pid_t ExternalCommand::execute() {
             }
         }
         return pid;
-
-        /// In cleanup (Jobs) remove jobs from timedjoblist if they exist there
-        ///addTimed removed timed
-        ///revist handler
     }
 }
 
@@ -811,6 +801,11 @@ pid_t ExternalCommand::execute() {
     *shell) : Command (cmd_line), append(append), shell(shell) {
         std::string cmd1 = std::string(cmd_line);
         std::string cmd2 = std::string(cmd_line);
+        int last_not_space = cmd2.find_last_not_of(" ");
+        if(cmd2[last_not_space] == '&'){
+            is_background = true;
+            cmd2 = cmd2.substr(0,last_not_space);
+        }
         cmd1 = cmd1.substr(0, cmd1.find_first_of(">") - 1);
         output_path = cmd2.substr(cmd2.find_last_of(">") + 1);
         char temp_cmd[COMMAND_ARGS_MAX_LENGTH];
@@ -826,6 +821,9 @@ pid_t ExternalCommand::execute() {
     }
 
     pid_t RedirectionCommand::execute() {
+        if(is_background){
+            cmd->setToBgState();
+        }
         int stdout_copy = dup(1);
         close(1);
         int oflags = append ? (O_WRONLY | O_APPEND | O_CREAT) : O_WRONLY | O_CREAT;
@@ -946,38 +944,36 @@ pid_t ExternalCommand::execute() {
             cmd1->Piped(PipeUse::CMDSTDOUT, filedes);
             cmd2->Piped(PipeUse::CMDSTDIN, filedes);
         } else {
-            cmd1->Piped(PipeUse::CMDSTDERRIN, filedes);
+            cmd1->Piped(PipeUse::CMDSTDOUT, filedes);
             cmd2->Piped(PipeUse::CMDSTDERROUT, filedes);
         }
         int write_channel;
         int read_channel;
         if (type == STANDARD) {
-            write_channel = STDIN_FILENO;
-            read_channel = STDOUT_FILENO;
+            write_channel = STDOUT_FILENO;
+            read_channel = STDIN_FILENO;
         } else {
-            write_channel = STDIN_FILENO;
-            read_channel = STDERR_FILENO;
+            write_channel = STDERR_FILENO;
+            read_channel = STDIN_FILENO;
         }
-        pid_t pid1 = executePiped(cmd1, filedes, write_channel);
-        pid_t pid2 = executePiped(cmd2, filedes, read_channel);
+        pid_t pid1 = executePiped(cmd1, filedes, write_channel, 1);
+        pid_t pid2 = executePiped(cmd2, filedes, read_channel, 0);
         close(filedes[0]);
         close(filedes[1]);
-        if (cmd2->inBackground()) {
-            if (cmd1->inBackground()) {
-                waitpid(pid1, nullptr, 0);
-                if(cmd1->isTimed()) { //TODO: add integration
-
-                }
-            }//TODO: cant do it. dror needs to create a vecotir for jobs in forgroud
-            waitpid(pid2, nullptr, 0);
+        if (!cmd2->inBackground()) {
+            if(pid1 != 0){
+                waitpid(pid1, nullptr, WUNTRACED);
+            }
+            if(pid2 != 0){
+                waitpid(pid2, nullptr, WUNTRACED);
+            }
         }
-        ///wait for sons or continue depending on thier details
         return 0;
     }
-    pid_t executePiped(Command *cmd, int *filedes, int channel1) {
+    pid_t executePiped(Command *cmd, int *filedes, int channel1, int pipeuse) {
         int copy_channel = dup(channel1);
         close(channel1); /// Prepare write channel and execute first program
-        int duped_to = dup(filedes[0]);
+        int duped_to = dup(filedes[pipeuse]);
         pid_t pid = cmd->execute();
         close(channel1);/// Fix father FDT
         duped_to = dup(copy_channel);

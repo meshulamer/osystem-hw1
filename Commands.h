@@ -50,6 +50,7 @@ public:
     bool virtual inBackground(){
         return false;
     }
+    void virtual setToBgState(){};
     //virtual void prepare();
     //virtual void cleanup(){};
     // TODO: Add your extra methods if needed
@@ -72,6 +73,9 @@ public:
     pid_t execute() override;
     bool virtual inBackground() override{
         return bg_cmd;
+    }
+    void virtual setToBgState() override{
+        bg_cmd = true;
     }
 };
 
@@ -100,6 +104,7 @@ class RedirectionCommand : public Command {
     bool append = false;
     SmallShell *shell;
     Command* cmd;
+    bool is_background = false;
     std::string output_path;
  public:
   explicit RedirectionCommand(const char* cmd_line, int index_of_redir_sign, SmallShell* shell);
