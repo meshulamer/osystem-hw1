@@ -16,7 +16,14 @@
 #include <fcntl.h>
 
 #define BASH_PATH "C:/cygwin64/bin/bash.exe"
-
+//TODO: All syscalls fail need to print the correct thing and exit. find out the correct system call using strace
+// TODO: add foreground job vector
+//TODO:  add timeuot integration to pipeline
+//TODO: background integration to redirection
+//TODO: cp commands
+//TODO: signals
+//TODO: tests
+//TODO: get tests from eilon
 using namespace std;
 void isSpecial(int* redir, int* pipe, char** arg, int arg_size);
 const std::string WHITESPACE = " \n\r\t\f\v";
@@ -431,8 +438,13 @@ pid_t ExternalCommand::execute() {
     if (pid == 0) {
         setpgrp();
         if (pipeuse != NOTUSED) {
-            close(pipe_args[0]);
-            close(pipe_args[1]);
+            if (pipeuse == CMDSTDERROUT || pipeuse == CMDSTDOUT) {
+                close(pipe_args[0]);
+            }
+            else{
+                close(pipe_args[1]);
+        }
+
         }
 
         if (execv(execv_args[0], execv_args) == -1) {
@@ -455,8 +467,10 @@ pid_t ExternalCommand::execute() {
         if (!bg_cmd) {
             shell->job_in_fg = new JobsList::JobEntry(pid, startime, cmd_string, isTimed());
             if (!bg_cmd && pipeuse == NOTUSED) {
-                waitpid(pid, nullptr, 0);
-                delete shell->job_in_fg;
+                waitpid(pid, nullptr, WUNTRACED);
+                if(shell -> job_in_fg != nullptr) {
+                    delete shell->job_in_fg;
+                }
                 shell->job_in_fg = nullptr;
                 if (isTimed()) {
                     shell->removeTimedJob(pid);
@@ -573,7 +587,6 @@ pid_t ExternalCommand::execute() {
             }
 
         }
-
 
     }
 
@@ -928,7 +941,7 @@ pid_t ExternalCommand::execute() {
     pid_t PipeCommand::execute() {
         int filedes[2] = {0, 0};
         int return_val;
-        return_val = pipe(filedes);
+        return_val = pipe(filedes);//TODO: syscall erro pprint to perror and end attempt at pipe
         if (type == STANDARD) {
             cmd1->Piped(PipeUse::CMDSTDOUT, filedes);
             cmd2->Piped(PipeUse::CMDSTDIN, filedes);
@@ -939,23 +952,23 @@ pid_t ExternalCommand::execute() {
         int write_channel;
         int read_channel;
         if (type == STANDARD) {
-            write_channel = STDOUT_FILENO;
-            read_channel = STDIN_FILENO;
+            write_channel = STDIN_FILENO;
+            read_channel = STDOUT_FILENO;
         } else {
-            write_channel = STDERR_FILENO;
-            read_channel = STDIN_FILENO;
+            write_channel = STDIN_FILENO;
+            read_channel = STDERR_FILENO;
         }
         pid_t pid1 = executePiped(cmd1, filedes, write_channel);
-        pid_t pid2 = (cmd2, filedes, read_channel);
+        pid_t pid2 = executePiped(cmd2, filedes, read_channel);
         close(filedes[0]);
         close(filedes[1]);
-        if (!cmd2->inBackground()) {
-            if (!cmd1->inBackground()) {
+        if (cmd2->inBackground()) {
+            if (cmd1->inBackground()) {
                 waitpid(pid1, nullptr, 0);
-                if(cmd1->isTimed()) {
+                if(cmd1->isTimed()) { //TODO: add integration
 
                 }
-            }
+            }//TODO: cant do it. dror needs to create a vecotir for jobs in forgroud
             waitpid(pid2, nullptr, 0);
         }
         ///wait for sons or continue depending on thier details
@@ -964,10 +977,10 @@ pid_t ExternalCommand::execute() {
     pid_t executePiped(Command *cmd, int *filedes, int channel1) {
         int copy_channel = dup(channel1);
         close(channel1); /// Prepare write channel and execute first program
-        dup(filedes[0]);
+        int duped_to = dup(filedes[0]);
         pid_t pid = cmd->execute();
         close(channel1);/// Fix father FDT
-        dup(copy_channel);
+        duped_to = dup(copy_channel);
         close(copy_channel);
         return pid;
     }

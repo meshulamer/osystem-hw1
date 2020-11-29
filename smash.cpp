@@ -21,9 +21,9 @@ int main(int argc, char* argv[]) {
     shell_access = &smash;
     struct sigaction sigalarmstruct{{sigalarmhandler},SA_NODEFER,SA_RESTART};
     sigaction(SIGALRM, &sigalarmstruct, NULL);
-    struct sigaction ctrlzstruct{{MyctrlZHandler},SA_RESTART};
+    struct sigaction ctrlzstruct{{MyctrlZHandler},SA_NODEFER,SA_RESTART};
     sigaction(SIGTSTP, &ctrlzstruct, NULL);
-    struct sigaction ctrlcstruct{{MyctrlCHandler},SA_RESTART};
+    struct sigaction ctrlcstruct{{MyctrlCHandler},SA_NODEFER,SA_RESTART};
     sigaction(SIGINT, &ctrlcstruct, NULL);
     while(true) {
         std::cout << smash.promptDisplay();
