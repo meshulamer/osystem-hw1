@@ -17,11 +17,7 @@
 
 #define BASH_PATH "C:/cygwin64/bin/bash.exe"
 //TODO: All syscalls fail need to print the correct thing and exit. find out the correct system call using strace
-// TODO: add foreground job vector
-//TODO:  add timeuot integration to pipeline
-//TODO: background integration to redirection
 //TODO: cp commands
-//TODO: signals
 //TODO: tests
 //TODO: get tests from eilon
 using namespace std;
@@ -986,10 +982,10 @@ pid_t ExternalCommand::execute() {
     pid_t executePiped(Command *cmd, int *filedes, int channel1, int pipeuse) {
         int copy_channel = dup(channel1);
         close(channel1); /// Prepare write channel and execute first program
-        int duped_to = dup(filedes[pipeuse]);
+        int duped_to = dup2(filedes[pipeuse],channel1);
         pid_t pid = cmd->execute();
         close(channel1);/// Fix father FDT
-        duped_to = dup(copy_channel);
+        duped_to = dup2(copy_channel,channel1);
         close(copy_channel);
         return pid;
     }
