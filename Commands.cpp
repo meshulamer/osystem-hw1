@@ -243,7 +243,7 @@ pid_t LsCommand::execute() {
 ShowPidCommand::ShowPidCommand(const char *cmd_line) : BuiltInCommand(cmd_line) {}
 
 pid_t ShowPidCommand::execute() {
-    cout << getpid() << endl;
+    cout << "smash pid is " << getpid() << endl;
     return 0;
 }
 
@@ -252,6 +252,7 @@ JobsList::JobEntry::JobEntry(int pid, time_t startime, char *com, bool is_timed)
     is_stopped(false) {
     strcpy(cmd_line, com);
 }
+
 
 void JobsList::addJob(int pid, time_t startime, char* com, bool is_timed) {
     JobEntry new_job = JobEntry(pid, startime, com, is_timed);
@@ -348,6 +349,10 @@ int SmallShell::getJobsListSize(){
 
 bool JobsList::JobEntry::IsStopped() {
     return is_stopped;
+}
+
+bool JobsList::JobEntry::IsTimed() {
+    return is_timed;
 }
 
 
@@ -468,9 +473,7 @@ pid_t ExternalCommand::execute() {
             shell->job_in_fg = new JobsList::JobEntry(pid, startime, cmd_string, isTimed());
             if (!bg_cmd && pipeuse == NOTUSED) {
                 waitpid(pid, nullptr, WUNTRACED);
-                if(shell -> job_in_fg != nullptr) {
-                    delete shell->job_in_fg;
-                }
+                delete shell->job_in_fg;
                 shell->job_in_fg = nullptr;
                 if (isTimed()) {
                     shell->removeTimedJob(pid);
@@ -604,7 +607,8 @@ pid_t ExternalCommand::execute() {
             return 0;
         }
         pid_t job_pid = job.getPid();
-        if (kill(job_pid, signal) == -1) {
+        int rrr = 0;
+        if ((rrr = kill(job_pid, signal)) == -1) {
             perror("smash error: failed to send signal");
             return 0;
         }
@@ -622,6 +626,15 @@ pid_t ExternalCommand::execute() {
             }
             catch (...) {
                 assert(false);/// Cannot happen. we just checked that it exists
+                return 0;
+            }
+        }
+        else if ((signal == SIGKILL) && job.IsTimed()) {
+            try{
+                shell->removeTimedJob(job.getPid());
+            }
+            catch (...){
+                assert(false);
                 return 0;
             }
         }

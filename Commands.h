@@ -158,10 +158,11 @@ public:
         friend class JobsList;
         friend class SmallShell;
         friend class ExternalCommand;
-        friend void MyctrlCHandler(int signal);
+        friend void ctrlCHandler(int signal);
         friend int JobNuGreaterThen(JobsList::JobEntry &a, JobsList::JobEntry &b);
         int getPid(){return pid;};
         bool IsStopped();
+        bool IsTimed();
         JobEntry(int pid, time_t startime, char* com, bool is_timed);
         JobEntry() = default;
         JobEntry& operator=(const JobEntry& other) = default;
@@ -263,7 +264,7 @@ private:
 
 public:
     friend class ExternalCommand;
-    friend void MyctrlCHandler(int signal);
+    friend void ctrlCHandler(int signal);
     void cleanup();
     void printJobs();
     void chprompt(std::string new_prompt);
