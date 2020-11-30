@@ -42,7 +42,7 @@ pid_t executePiped(Command* cmd,int* filedes,int channel1, int pipeuse);
 #define EXEC(path, arg)
 
   int JobNuGreaterThen(JobsList::JobEntry &a, JobsList::JobEntry &b){
-      return (b.pid - a.pid) > 0;
+      return (b.job_id - a.job_id) > 0;
   }
 string _ltrim(const std::string& s)
 {
@@ -339,6 +339,20 @@ void JobsList::removeJobById(int job_id) {
             }
             jobs_list.erase(it);
             return;
+        }
+    }
+    if(job_id==current_max_job_id){
+        if(jobs_list.empty()){
+            current_max_job_id=0;
+        }
+        else{
+            int max = -1;
+            for(int i=0; i<jobs_list.size();i++){
+                if(jobs_list[i].job_id>max){
+                    max = jobs_list[i].job_id;
+                }
+            }
+            current_max_job_id=max;
         }
     }
 }
@@ -709,7 +723,7 @@ pid_t ExternalCommand::execute() {
         }
         job_in_fg = new JobsList::JobEntry(job.pid,job.start_time,job.cmd_line,job.is_timed);
         job_list.removeJobById(job_id);
-        result = waitpid(job.pid, NULL, WUNTRACED|WCONTINUED);
+        result = waitpid(job.pid, NULL, WUNTRACED);
         if (result == -1) {
             perror("smash error: waitpid system call failed");
             exit(EXIT_FAILURE);

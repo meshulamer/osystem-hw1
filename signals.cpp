@@ -20,7 +20,7 @@ void ctrlCHandler(int signal) {
         return;
     pid_t fg_pid = smash.job_in_fg->getPid();
     if(fg_pid != getpid()) {
-        if(kill(fg_pid, SIGKILL)) {
+        if(kill(fg_pid, SIGKILL)==-1) {
             perror("smash error: kill failed");
             exit(EXIT_FAILURE);
         }
@@ -48,4 +48,6 @@ void ctrlZHandler(int singal) {
         smash.JobHalted(smash.getCurrMaxJobId());
         cout << "smash: process " << fg_pid << " was stopped" << endl;
     }
+    delete smash.job_in_fg;
+    smash.job_in_fg = nullptr;
 }
