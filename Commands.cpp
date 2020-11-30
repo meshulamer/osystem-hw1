@@ -338,23 +338,24 @@ void JobsList::removeJobById(int job_id) {
                 stopped_jobs.remove(it->job_id);
             }
             jobs_list.erase(it);
+            if(job_id==current_max_job_id){
+                if(jobs_list.empty()){
+                    current_max_job_id=0;
+                }
+                else{
+                    int max = -1;
+                    for(int i=0; i<jobs_list.size();i++){
+                        if(jobs_list[i].job_id>max){
+                            max = jobs_list[i].job_id;
+                        }
+                    }
+                    current_max_job_id=max;
+                }
+            }
             return;
         }
     }
-    if(job_id==current_max_job_id){
-        if(jobs_list.empty()){
-            current_max_job_id=0;
-        }
-        else{
-            int max = -1;
-            for(int i=0; i<jobs_list.size();i++){
-                if(jobs_list[i].job_id>max){
-                    max = jobs_list[i].job_id;
-                }
-            }
-            current_max_job_id=max;
-        }
-    }
+
 }
 
 

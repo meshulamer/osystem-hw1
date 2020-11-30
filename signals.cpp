@@ -4,7 +4,7 @@
 #include "signals.h"
 #include "Commands.h"
 #include <unistd.h>
-
+#include <wait.h>
 
 using namespace std;
 
@@ -38,12 +38,16 @@ void ctrlZHandler(int singal) {
         return;
     }
     pid_t fg_pid = smash.job_in_fg->getPid();
-    if(fg_pid != getpid()) {
-        if(kill(fg_pid, SIGSTOP)) {
+    if(fg_pid != getpid() && fg_pid !=0) {
+        if(kill(fg_pid, SIGSTOP)==-1) {
             perror("smash error: kill failed");
             exit(EXIT_FAILURE);
         }
-        JobsList::JobEntry fg_job = *smash.job_in_fg;
+        if(waitpid(fg_pid, NULL, WNOHANG) ==-1){
+            perror("smash error: waitpid system call failed");
+            exit(EXIT_FAILURE);
+        }
+        JobsList::JobEntry& fg_job = *smash.job_in_fg;
         smash.job_list.addJob(fg_job.getPid(), fg_job.start_time, fg_job.cmd_line, fg_job.is_timed);
         smash.JobHalted(smash.getCurrMaxJobId());
         cout << "smash: process " << fg_pid << " was stopped" << endl;
