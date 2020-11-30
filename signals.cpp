@@ -30,7 +30,7 @@ void ctrlCHandler(int signal) {
     }
 }
 
-void ctrlZHandler(int signail) {
+void ctrlZHandler(int singal) {
     cout << "smash: got ctrl-Z" << endl;
     SmallShell &smash = SmallShell::getInstance();
     if(smash.job_in_fg == nullptr) {

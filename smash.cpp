@@ -10,6 +10,7 @@
 int main(int argc, char* argv[]) {
     SmallShell& smash = SmallShell::getInstance();
     if(signal(SIGTSTP,ctrlZHandler)==SIG_ERR) {
+        std::cout << "fuk off" << std::endl;
         perror("smash error: failed to set ctrl-Z handler");
     }
     if(signal(SIGINT,ctrlCHandler)==SIG_ERR) {
