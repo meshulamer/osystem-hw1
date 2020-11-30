@@ -548,7 +548,6 @@ pid_t ExternalCommand::execute() {
         while (it != job_list.jobs_list.end()) {
             if (it->job_id != jobId) ++it;
             else {
-                assert(!it->is_stopped);
                 it->is_stopped = true;
                 job_list.stopped_jobs.push_back(jobId);
                 return;
@@ -561,7 +560,6 @@ pid_t ExternalCommand::execute() {
         while (it != job_list.jobs_list.end()) {
             if (it->job_id != jobId) ++it;
             else {
-                assert(it->is_stopped);
                 it->is_stopped = false;
                 job_list.stopped_jobs.remove(jobId);
                 return;
@@ -606,7 +604,7 @@ pid_t ExternalCommand::execute() {
 
     pid_t KillCommand::execute() {
         JobsList::JobEntry job;
-        if (status == SyntaxError) {
+        if (status == SyntaxError || job_id ==-1) {
             cout << "smash error: kill: invalid arguments" << endl;
             return 0;
         }
