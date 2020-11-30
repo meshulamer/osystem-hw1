@@ -700,13 +700,20 @@ pid_t ExternalCommand::execute() {
         int result;
         JobsList::JobEntry job = getJob(job_id);
         cout << job.cmd_line << " : " << job.pid << endl;
-        kill(job.getPid(), SIGCONT);
-        result = waitpid(job.pid, NULL, WCONTINUED);
+        if(kill(job.getPid(), SIGCONT)==-1){
+            perror("smash error: kill system call failed");
+            exit(EXIT_FAILURE);
+        }
+        if(job_in_fg!= nullptr){
+            delete job_in_fg;
+        }
+        job_in_fg = new JobsList::JobEntry(job.pid,job.start_time,job.cmd_line,job.is_timed);
+        job_list.removeJobById(job_id);
+        result = waitpid(job.pid, NULL, WUNTRACED|WCONTINUED);
         if (result == -1) {
             perror("smash error: waitpid system call failed");
             exit(EXIT_FAILURE);
         }
-        job_list.removeJobById(job_id);
     }
 
 
