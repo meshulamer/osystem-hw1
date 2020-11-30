@@ -38,8 +38,8 @@ void ctrlZHandler(int singal) {
         return;
     }
     pid_t fg_pid = smash.job_in_fg->getPid();
-    if(fg_pid != getpid() && fg_pid !=0) {
-        if(kill(fg_pid, SIGSTOP)==-1) {
+    if(fg_pid != getpid()) {
+        if(kill(fg_pid, SIGSTOP) == -1) {
             perror("smash error: kill failed");
             exit(EXIT_FAILURE);
         }
