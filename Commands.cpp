@@ -344,9 +344,9 @@ void JobsList::removeJobById(int job_id) {
                 }
                 else{
                     int max = -1;
-                    for(int i=0; i<jobs_list.size();i++){
-                        if(jobs_list[i].job_id>max){
-                            max = jobs_list[i].job_id;
+                    for(auto it = jobs_list.begin(); it !=jobs_list.end() ;it++){
+                        if(it->job_id>max){
+                            max = it->job_id;
                         }
                     }
                     current_max_job_id=max;
@@ -355,7 +355,6 @@ void JobsList::removeJobById(int job_id) {
             return;
         }
     }
-
 }
 
 
