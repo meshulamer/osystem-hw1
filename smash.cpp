@@ -9,10 +9,10 @@
 
 int main(int argc, char* argv[]) {
     SmallShell& smash = SmallShell::getInstance();
-    if(signal(SIGTSTP , MyctrlZHandler)==SIG_ERR) {
+    if(signal(SIGTSTP,ctrlZHandler)==SIG_ERR) {
         perror("smash error: failed to set ctrl-Z handler");
     }
-    if(signal(SIGINT , ctrlCHandler)==SIG_ERR) {
+    if(signal(SIGINT,ctrlCHandler)==SIG_ERR) {
         perror("smash error: failed to set ctrl-C handler");
     }
     struct sigaction sigalarmstruct{{sigalarmhandler},SA_NODEFER,SA_RESTART};

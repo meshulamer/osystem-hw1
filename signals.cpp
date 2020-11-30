@@ -30,6 +30,19 @@ void ctrlCHandler(int signal) {
     }
 }
 
-void MyctrlZHandler(int signail) {
-
+void ctrlZHandler(int signail) {
+    cout << "smash: got ctrl-Z" << endl;
+    SmallShell &smash = SmallShell::getInstance();
+    if(smash.job_in_fg == nullptr) {
+        return;
+    }
+    pid_t fg_pid = smash.job_in_fg->getPid();
+    if(fg_pid != getpid()) {
+        if(kill(fg_pid, SIGSTOP)) {
+            perror("smash error: kill failed");
+        }
+        JobsList::JobEntry fg_job = *smash.job_in_fg;
+        smash.job_list.addJob(fg_job.getPid(), fg_job.start_time, fg_job.cmd_line, fg_job.is_timed);
+        cout << "smash: process " << fg_pid << " was stopped" << endl;
+    }
 }

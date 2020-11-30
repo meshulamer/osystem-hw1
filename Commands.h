@@ -164,6 +164,7 @@ public:
         friend class SmallShell;
         friend class ExternalCommand;
         friend void ctrlCHandler(int signal);
+        friend void ctrlZHandler(int signal);
         friend int JobNuGreaterThen(JobsList::JobEntry &a, JobsList::JobEntry &b);
         int getPid(){return pid;};
         bool IsStopped();
@@ -270,6 +271,7 @@ private:
 public:
     friend class ExternalCommand;
     friend void ctrlCHandler(int signal);
+    friend void ctrlZHandler(int signal);
     void cleanup();
     void printJobs();
     void chprompt(std::string new_prompt);
