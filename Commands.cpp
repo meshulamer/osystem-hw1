@@ -713,6 +713,9 @@ pid_t ExternalCommand::execute() {
     void SmallShell::moveJobToForeground(int job_id) {
         int result;
         JobsList::JobEntry job = getJob(job_id);
+        if(job.is_stopped){
+            JobContinued(job_id);
+        }
         cout << job.cmd_line << " : " << job.pid << endl;
         if(kill(job.getPid(), SIGCONT)==-1){
             perror("smash error: kill system call failed");
