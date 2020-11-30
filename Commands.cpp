@@ -771,7 +771,7 @@ pid_t ExternalCommand::execute() {
                 return;
             }
             if (job.is_stopped) {
-                if(kill(SIGCONT, job.pid)==-1){
+                if(kill(job.pid, SIGCONT)==-1){
                     perror("smash: kill system call failed");
                     exit(EXIT_FAILURE);
                 }
@@ -792,7 +792,7 @@ pid_t ExternalCommand::execute() {
                 catch (...) {
                     assert(false);/// Cannot happen. Exists in stop and therefore exists in jobs
                 }
-                if(kill(SIGCONT, job.pid)==-1){
+                if(kill(job.pid, SIGCONT)==-1){
                     perror("smash: kill system call failed");
                     exit(EXIT_FAILURE);
                 }
