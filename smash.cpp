@@ -5,7 +5,7 @@
 #include <limits>
 #include "Commands.h"
 #include "signals.h"
-
+#include <limits>
 
 
 int main(int argc, char* argv[]) {
@@ -19,10 +19,6 @@ int main(int argc, char* argv[]) {
     }
     struct sigaction sigalarmstruct{{sigalarmhandler},SA_NODEFER,SA_RESTART};
     sigaction(SIGALRM, &sigalarmstruct, NULL);
-    /*struct sigaction ctrlzstruct{{MyctrlZHandler},SA_NODEFER,SA_RESTART};
-    sigaction(SIGTSTP, &ctrlzstruct, NULL);
-    struct sigaction ctrlcstruct{{MyctrlCHandler},SA_NODEFER,SA_RESTART};
-    sigaction(SIGINT, &ctrlcstruct, NULL);*/
     while(true) {
         std::cout << smash.promptDisplay();
         std::string cmd_line;

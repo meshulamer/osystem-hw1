@@ -16,6 +16,7 @@
 #include <fcntl.h>
 
 #define BASH_PATH "C:/cygwin64/bin/bash.exe"
+#define LINUX_MAX_PATH_SIZE 4097
 //TODO: All syscalls fail need to print the correct thing and exit. find out the correct system call using strace
 //TODO: cp commands
 //TODO: tests
@@ -141,6 +142,9 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
     else if (strcmp(arg[0], "showpid") == 0) {
         rtnCmd = new ShowPidCommand(cmd_line);
     }
+    else if (strcmp(arg[0], "cp") == 0) {
+        rtnCmd = new CpCommand(cmd_line,arg,arg_size);
+    }
     else if (strcmp(arg[0], "cd") == 0){
         rtnCmd = new ChangeDirCommand(cmd_line, arg, arg_size, this);
     }
@@ -186,13 +190,23 @@ std::string SmallShell::promptDisplay() const {
 void SmallShell::executeCommand(const char *cmd_line) {
   cleanup();
   Command* cmd = CreateCommand(cmd_line);
+  if(cmd == nullptr){
+      perror("smash error: Command memory allocation failed");
+      exit(EXIT_FAILURE);
+  }
   cmd->execute();
   delete cmd;
-  // Please note that you must fork smash process for some commands (e.g., external commands....)
 }
 
 void SmallShell::addJob(int pid, time_t startime, char* cmd_line, bool is_timed) {
-    job_list.addJob(pid, startime, cmd_line, is_timed);
+    try {
+        job_list.addJob(pid, startime, cmd_line, is_timed);
+    }
+    catch(...){
+        perror("smash error: JobList memory allocation failed");
+        exit(EXIT_FAILURE);
+    }
+
 }
 
 void SmallShell::cleanup() {
@@ -223,7 +237,7 @@ pid_t LsCommand::execute() {
     int n;
     n = scandir(".", &namelist, NULL, alphasort);
     if (n == -1) {
-        perror("scandir");
+        perror("smash error: scandir call failed");
         exit(EXIT_FAILURE);
     }
     int i = 2;
@@ -251,11 +265,17 @@ JobsList::JobEntry::JobEntry(int pid, time_t startime, char *com, bool is_timed)
 
 
 void JobsList::addJob(int pid, time_t startime, char* com, bool is_timed) {
-    JobEntry new_job = JobEntry(pid, startime, com, is_timed);
-    current_max_job_id++;
-    new_job.job_id = current_max_job_id;
-    new_job.is_finished = false;
-    jobs_list.push_back(new_job);
+    try {
+        JobEntry new_job = JobEntry(pid, startime, com, is_timed);
+        current_max_job_id++;
+        new_job.job_id = current_max_job_id;
+        new_job.is_finished = false;
+        jobs_list.push_back(new_job);
+    }
+    catch(...){
+        perror("smash error: Joblist memory allocation failed");
+        exit(EXIT_FAILURE);
+    }
 }
 
 std::vector<int>* JobsList::removeFinishedJobs() {
@@ -263,10 +283,6 @@ std::vector<int>* JobsList::removeFinishedJobs() {
     int new_max =0;
     auto* removedVec = new std::vector<int>;
     for (auto it = jobs_list.begin(); it != jobs_list.end();){
-        /*if(it->is_stopped){          ///Might not be necesarry and is casuing problems
-            ++it;
-            continue;
-        }*/
         retval = waitpid(it->pid,NULL,WNOHANG);
         if(retval > 0){
             try{
@@ -282,6 +298,7 @@ std::vector<int>* JobsList::removeFinishedJobs() {
         }
         else if(retval == -1){
             perror("smash error: waitpid failed during status check");
+            exit(EXIT_FAILURE);
         }
         else{
             if (it->job_id > new_max) new_max = it -> job_id;
@@ -324,7 +341,6 @@ void JobsList::removeJobById(int job_id) {
             return;
         }
     }
-    //throw "Doesnt Exist";
 }
 
 
@@ -358,8 +374,8 @@ PwdCommand::PwdCommand(const char* cmd_line, char** cmd_arg , int arg_vec_size, 
         path = getcwd(buf, 1024);
     }
     catch(std::exception &err){
-        cout << "ERROR caught something in PwdCommand:"<< err.what();
-        exit(1);
+        cout << "smash error: PwdCommand error in :"<< err.what();
+        exit(EXIT_FAILURE);
     }
 }
 
@@ -461,8 +477,15 @@ pid_t ExternalCommand::execute() {
         }
         if (!bg_cmd) {
             shell->job_in_fg = new JobsList::JobEntry(pid, startime, cmd_string, isTimed());
+            if(shell ->job_in_fg == nullptr){
+                perror("smash error: Joblist memory allocation failed");
+                exit(EXIT_FAILURE);
+            }
             if (!bg_cmd && pipeuse == NOTUSED) {
-                waitpid(pid, nullptr, WUNTRACED);
+                if(waitpid(pid, nullptr, WUNTRACED)==-1){
+                    perror("smash error: waitpid system call failed");
+                    exit(EXIT_FAILURE);
+                }
                 delete shell->job_in_fg;
                 shell->job_in_fg = nullptr;
                 if (isTimed()) {
@@ -513,7 +536,10 @@ pid_t ExternalCommand::execute() {
 
     void SmallShell::KillEveryOne() {
         for (auto it = job_list.jobs_list.begin(); it != job_list.jobs_list.end(); it++) {
-            kill(it->getPid(), SIGKILL);
+            if(kill(it->getPid(), SIGKILL)==-1){
+                perror("smash error: kill system call failed");
+                exit(EXIT_FAILURE);
+            }
         }
     }
 
@@ -593,10 +619,9 @@ pid_t ExternalCommand::execute() {
             return 0;
         }
         pid_t job_pid = job.getPid();
-        int rrr = 0;
-        if ((rrr = kill(job_pid, signal)) == -1) {
-            perror("smash error: failed to send signal");
-            return 0;
+        if ( kill(job_pid, signal) == -1) {
+            perror("smash error: kill system call failed");
+            exit(EXIT_FAILURE);
         }
         if (signal == SIGSTOP || signal == SIGTSTP) {
             try {
@@ -681,7 +706,8 @@ pid_t ExternalCommand::execute() {
         kill(job.getPid(), SIGCONT);
         result = waitpid(job.pid, NULL, WCONTINUED);
         if (result == -1) {
-            perror("smash error: waitpid failed during status check");
+            perror("smash error: waitpid system call failed");
+            exit(EXIT_FAILURE);
         }
         job_list.removeJobById(job_id);
     }
@@ -724,7 +750,10 @@ pid_t ExternalCommand::execute() {
                 return;
             }
             if (job.is_stopped) {
-                kill(SIGCONT, job.pid);
+                if(kill(SIGCONT, job.pid)==-1){
+                    perror("smash: kill system call failed");
+                    exit(EXIT_FAILURE);
+                }
                 JobContinued(jobId);
             } else { ///Job exists but not stopped
                 cout << "smash error: bg: job-id " << job.job_id << " is already running in the background" << endl;
@@ -742,7 +771,10 @@ pid_t ExternalCommand::execute() {
                 catch (...) {
                     assert(false);/// Cannot happen. Exists in stop and therefore exists in jobs
                 }
-                kill(SIGCONT, job.pid);
+                if(kill(SIGCONT, job.pid)==-1){
+                    perror("smash: kill system call failed");
+                    exit(EXIT_FAILURE);
+                }
                 JobContinued(jobId);
             }
         }
@@ -766,7 +798,10 @@ pid_t ExternalCommand::execute() {
                 }
                 it = TimedJobsList.erase(it);
                 if (pid != getpid()) {
-                    kill(pid, SIGKILL);
+                    if(kill(pid, SIGKILL)==-1){
+                        perror("smash: kill system call failed");
+                        exit(EXIT_FAILURE);
+                    }
                 }
                 _rtrim(cmd);
                 cout << "smash: got an alarm" << endl;
@@ -800,7 +835,10 @@ pid_t ExternalCommand::execute() {
             shell->printBeforeQuit();
             shell->KillEveryOne();
         }
-        kill(getpid(), SIGKILL);
+        if(kill(getpid(), SIGKILL)==-1){
+            perror("smash: kill system call failed");
+            exit(EXIT_FAILURE);
+        }
         return 0;
     }
 
@@ -833,20 +871,40 @@ pid_t ExternalCommand::execute() {
         if(is_background){
             cmd->setToBgState();
         }
-        int stdout_copy = dup(1);
-        close(1);
+        int stdout_copy = dup(STDOUT_FILENO);
+        if(stdout_copy == -1){
+            perror("smash: dup function failed");
+            exit(EXIT_FAILURE);
+        }
         int oflags = append ? (O_WRONLY | O_APPEND | O_CREAT) : O_WRONLY | O_CREAT;
         int cflag = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH | S_IXOTH;
         int fdt_i = open(output_path.c_str(), oflags, 0666);
-        assert(fdt_i == 1);
+        if(dup2(fdt_i,STDOUT_FILENO) == -1){
+            perror("smash: dup function failed");
+            exit(EXIT_FAILURE);
+        }
         if (-1 != fdt_i) {
             cmd->execute();
         } else {
             perror("smash error: opening file failed");
+            exit(EXIT_FAILURE);
         }
-        close(1);
-        dup2(stdout_copy, 1);
-        close(stdout_copy);
+        if(close(STDOUT_FILENO)==-1){
+            perror("smash: close system call failed");
+            exit(EXIT_FAILURE);
+        }
+        if(dup2(stdout_copy, STDOUT_FILENO)==-1){
+            perror("smash: dup function failed");
+            exit(EXIT_FAILURE);
+        }
+        if(close(stdout_copy)==-1){
+            perror("smash: close system call failed");
+            exit(EXIT_FAILURE);
+        }
+        if(close(fdt_i)==-1){
+            perror("smash: close system call failed");
+            exit(EXIT_FAILURE);
+        }
         return 0;
     }
 
@@ -967,25 +1025,176 @@ pid_t ExternalCommand::execute() {
         }
         pid_t pid1 = executePiped(cmd1, filedes, write_channel, 1);
         pid_t pid2 = executePiped(cmd2, filedes, read_channel, 0);
-        close(filedes[0]);
-        close(filedes[1]);
+        if(close(filedes[0])==-1){
+            perror("smash: close system call failed");
+            exit(EXIT_FAILURE);
+        }
+        if(close(filedes[1])==-1){
+            perror("smash: close system call failed");
+            exit(EXIT_FAILURE);
+        }
         if (!cmd2->inBackground()) {
             if(pid1 != 0){
-                waitpid(pid1, nullptr, WUNTRACED);
+                if(waitpid(pid1, nullptr, WUNTRACED)==-1_){
+                    perror("smash: waitpid system call failed");
+                    exit(EXIT_FAILURE);
+                }
             }
             if(pid2 != 0){
-                waitpid(pid2, nullptr, WUNTRACED);
+                if(waitpid(pid2, nullptr, WUNTRACED)==-1){
+                    perror("smash: waitpid system call failed");
+                    exit(EXIT_FAILURE);
+                }
             }
         }
         return 0;
     }
     pid_t executePiped(Command *cmd, int *filedes, int channel1, int pipeuse) {
         int copy_channel = dup(channel1);
-        close(channel1); /// Prepare write channel and execute first program
+        if(close(channel1)==-1){
+            perror("smash: close system call failed");
+            exit(EXIT_FAILURE);
+        } /// Prepare write channel and execute first program
         int duped_to = dup2(filedes[pipeuse],channel1);
+        if(duped_to ==-1){
+            perror("smash: dup function failed");
+            exit(EXIT_FAILURE);
+        }
         pid_t pid = cmd->execute();
-        close(channel1);/// Fix father FDT
+        if(close(channel1)==-1){
+            perror("smash: close system call failed");
+            exit(EXIT_FAILURE);
+        }/// Fix father FDT
         duped_to = dup2(copy_channel,channel1);
-        close(copy_channel);
+        if(duped_to ==-1){
+            perror("smash: dup function failed");
+            exit(EXIT_FAILURE);
+        }
+        if(close(copy_channel)==-1){
+            perror("smash: close system call failed");
+            exit(EXIT_FAILURE);
+        }
         return pid;
     }
+
+CpCommand::CpCommand(const char* cmd_line, char **cmd_arg, int arg_vec_size):BuiltInCommand(cmd_line){
+    if(arg_vec_size < 3){
+        missing_args = true;
+    }
+    else{
+        source_path = cmd_arg[1];
+        dest_path = cmd_arg[2];
+        int bg_index = dest_path.find_last_of('&');
+        if(bg_index < dest_path.length() || (arg_vec_size > 3 && cmd_arg[3][0] == '&')){ ///If this is a bg command
+            bg_cmd = true;
+        }
+        if(bg_index != -1 && bg_index < dest_path.length()){
+            dest_path.substr(0,bg_index);
+        }
+    }
+
+}
+
+pid_t CpCommand::execute() {
+    if (this->missing_args) {
+        ///Print error msg
+        return 0;
+    }
+    int source_fdt, dest_fdt;
+    source_fdt = open(source_path.c_str(), O_RDONLY);
+    if (source_fdt == -1) {
+        perror("smash error: Cp Command failed to open source file");
+        exit(EXIT_FAILURE);
+    }
+    char source[LINUX_MAX_PATH_SIZE];
+    char dest[LINUX_MAX_PATH_SIZE];
+    realpath(source_path.c_str(), source);
+    realpath(dest_path.c_str(), dest);
+    if (strcmp(source, dest) == 0) {
+        if (close(source_fdt) == -1) {
+            perror("smash error: Cp Command failed to close source file");
+            exit(EXIT_FAILURE);
+        }
+        cout << source_path << " was copied to " << dest_path  << endl;
+        return 0;
+
+    }
+    dest_fdt = open(dest_path.c_str(), O_CREAT | O_TRUNC | O_WRONLY, 0666);
+    if (dest_fdt == -1) {
+        perror("smash error: Cp Command failed to open destination file");
+        if (close(source_fdt) == -1) {
+            perror("smash error: Cp Command failed to close source file");
+            exit(EXIT_FAILURE);
+        }
+    }
+    int pid = fork();
+    if (pid == 0) { /// son runs the program
+        if (setpgrp() == -1) {
+            perror("smash error: Cp Command setpgrp failed");
+            exit(EXIT_FAILURE);
+        }
+        char buffer[BUFFER_SIZE];
+        int chars_read = read(source_fdt, buffer, BUFFER_SIZE);
+        while (chars_read == BUFFER_SIZE) {
+            if (write(dest_fdt, buffer, chars_read) == -1) {
+                perror("smash error: Cp Command write failed");
+                exit(EXIT_FAILURE);
+            }
+            chars_read = read(source_fdt, buffer, BUFFER_SIZE);
+        }
+        if (chars_read == -1) {
+            perror("smash error: Cp Command read failed");
+            exit(EXIT_FAILURE);
+        }
+        if (chars_read > 0) {
+            if (write(dest_fdt, buffer, chars_read) == -1) {
+                perror("smash error: Cp Command write failed");
+                exit(EXIT_FAILURE);
+            }
+        }
+        cout << source_path << " was copied to " << dest_path << endl;
+        exit(EXIT_SUCCESS);
+    }
+    if (close(source_fdt) == -1) {
+        if (close(source_fdt) == -1) {
+            perror("smash error: Cp Command failed to close source file");
+            perror("smash error: Cp Command failed to close source file");
+            exit(EXIT_FAILURE);
+        }
+        perror("smash error: Cp Command failed to close source file");
+        exit(EXIT_FAILURE);
+    }
+    if (close(dest_fdt) == -1) {
+        perror("smash error: Cp Command failed to close source file");
+        exit(EXIT_FAILURE);
+    }
+    time_t startime = time(NULL);
+    SmallShell &shell = SmallShell::getInstance();
+    int job_id = 0;
+    if (bg_cmd) {
+        shell.addJob(pid, startime, cmd_string, isTimed());
+        job_id = shell.getCurrMaxJobId();
+    }
+    if (isTimed()) {
+        time_t closest_time = shell.getClosestAlarmTime();
+        shell.addTimed(bg_cmd, startime, pid, job_id, getDuration(), originalString());
+        if (getDuration() < closest_time || closest_time == 0) {
+            alarm(getDuration());
+        }
+    }
+    if (!bg_cmd) {
+        shell.job_in_fg = new JobsList::JobEntry(pid, startime, cmd_string, isTimed());
+        if (!bg_cmd && pipeuse == NOTUSED) {
+            if(waitpid(pid, nullptr, WUNTRACED)==-1){
+                perror("smash error: waitpid system call failed");
+                exit(EXIT_FAILURE);
+            }
+            delete shell.job_in_fg;
+            shell.job_in_fg = nullptr;
+            if (isTimed()) {
+                shell.removeTimedJob(pid);
+            }
+        }
+    }
+    return pid;
+}

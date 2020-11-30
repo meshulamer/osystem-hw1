@@ -22,6 +22,7 @@ void ctrlCHandler(int signal) {
     if(fg_pid != getpid()) {
         if(kill(fg_pid, SIGKILL)) {
             perror("smash error: kill failed");
+            exit(EXIT_FAILURE);
         }
         if(smash.job_in_fg->is_timed) {
             smash.removeTimedJob(fg_pid);
@@ -40,6 +41,7 @@ void ctrlZHandler(int singal) {
     if(fg_pid != getpid()) {
         if(kill(fg_pid, SIGSTOP)) {
             perror("smash error: kill failed");
+            exit(EXIT_FAILURE);
         }
         JobsList::JobEntry fg_job = *smash.job_in_fg;
         smash.job_list.addJob(fg_job.getPid(), fg_job.start_time, fg_job.cmd_line, fg_job.is_timed);

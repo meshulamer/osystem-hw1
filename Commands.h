@@ -9,7 +9,7 @@
 
 #define COMMAND_ARGS_MAX_LENGTH (200)
 #define COMMAND_MAX_ARGS (20)
-#define MAX_BUFFER_LENGTH (128)
+#define BUFFER_SIZE (1024)
 class SmallShell;
 class Command {
 public:
@@ -64,7 +64,6 @@ class BuiltInCommand : public Command {
 
 class ExternalCommand : public Command {
 private:
-    int arg_size;
     bool bg_cmd = false;
     SmallShell* shell;
 public:
@@ -123,6 +122,17 @@ class ShowPidCommand : public BuiltInCommand {
   ShowPidCommand(const char* cmd_line);
   virtual ~ShowPidCommand() {}
   pid_t execute() override;
+};
+
+class CpCommand : public BuiltInCommand {
+    bool bg_cmd = false;
+    std::string source_path;
+    std::string dest_path;
+    bool missing_args = false;
+public:
+    CpCommand(const char* cmd_line, char **cmd_arg, int arg_vec_size);
+    virtual ~CpCommand() {}
+    pid_t execute() override;
 };
 
 class JobsList;
@@ -269,6 +279,7 @@ private:
     SmallShell();
 
 public:
+    friend class CpCommand;
     friend class ExternalCommand;
     friend void ctrlCHandler(int signal);
     friend void ctrlZHandler(int signal);
