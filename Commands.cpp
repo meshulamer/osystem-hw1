@@ -437,7 +437,6 @@ pid_t ChangeDirCommand::execute() {
 
 ExternalCommand::ExternalCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell): Command(cmd_line), shell(shell) {
     std::string last_arg = cmd_arg[arg_vec_size-1];
-    arg_size = arg_vec_size;
     if(last_arg[last_arg.size()-1] == '&'){
         bg_cmd = true;
     }
@@ -1035,7 +1034,7 @@ pid_t ExternalCommand::execute() {
         }
         if (!cmd2->inBackground()) {
             if(pid1 != 0){
-                if(waitpid(pid1, nullptr, WUNTRACED)==-1_){
+                if(waitpid(pid1, nullptr, WUNTRACED)==-1){
                     perror("smash: waitpid system call failed");
                     exit(EXIT_FAILURE);
                 }
