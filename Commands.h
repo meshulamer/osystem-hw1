@@ -164,7 +164,7 @@ public:
     class JobEntry {
         time_t start_time;
         int job_id;
-        int pid;
+        pid_t pid;
         bool is_finished;
         bool is_stopped;
         char cmd_line[COMMAND_ARGS_MAX_LENGTH];
@@ -176,7 +176,7 @@ public:
         friend void ctrlCHandler(int signal);
         friend void ctrlZHandler(int signal);
         friend int JobNuGreaterThen(JobsList::JobEntry &a, JobsList::JobEntry &b);
-        int getPid(){return pid;};
+        pid_t getjobPid(){return pid;};
         bool IsStopped();
         bool IsTimed();
         JobEntry(int pid, time_t startime, char* com, bool is_timed);

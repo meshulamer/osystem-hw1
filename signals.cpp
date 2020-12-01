@@ -43,10 +43,6 @@ void ctrlZHandler(int singal) {
             perror("smash error: kill failed");
             exit(EXIT_FAILURE);
         }
-        if(waitpid(fg_pid, NULL, WNOHANG) ==-1){
-            perror("smash error: waitpid system call failed");
-            exit(EXIT_FAILURE);
-        }
         JobsList::JobEntry& fg_job = *smash.job_in_fg;
         smash.job_list.addJob(fg_job.getPid(), fg_job.start_time, fg_job.cmd_line, fg_job.is_timed);
         smash.JobHalted(smash.getCurrMaxJobId());

@@ -15,7 +15,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#define BASH_PATH "C:/cygwin64/bin/bash.exe"
+#define BASH_PATH "/bin/bash"
 #define LINUX_MAX_PATH_SIZE 4097
 //TODO: All syscalls fail need to print the correct thing and exit. find out the correct system call using strace
 //TODO: cp commands
@@ -466,7 +466,10 @@ pid_t ExternalCommand::execute() {
     time_t startime = time(NULL);
     int pid = fork();
     if (pid == 0) {
-        setpgrp();
+        if (setpgrp() == -1) {
+            perror("smash error: Cp Command setpgrp failed");
+            exit(EXIT_FAILURE);
+        }
         if (pipeuse != NOTUSED) {
             close(pipe_args[0]);
             close(pipe_args[1]);
@@ -549,7 +552,7 @@ pid_t ExternalCommand::execute() {
 
     void SmallShell::KillEveryOne() {
         for (auto it = job_list.jobs_list.begin(); it != job_list.jobs_list.end(); it++) {
-            if(kill(it->getPid(), SIGKILL)==-1){
+            if(kill(it->getjobPid(), SIGKILL)==-1){
                 perror("smash error: kill system call failed");
                 exit(EXIT_FAILURE);
             }
@@ -629,8 +632,9 @@ pid_t ExternalCommand::execute() {
             cout << "smash error: kill: job-id " << job_id << " does not exist" << endl;
             return 0;
         }
-        pid_t job_pid = job.getPid();
-        if ( kill(job_pid, signal) == -1) {
+        pid_t job_pid = job.getjobPid();
+        int result = kill(job_pid, signal);
+        if ( result == -1) {
             perror("smash error: kill system call failed");
             exit(EXIT_FAILURE);
         }
@@ -717,7 +721,7 @@ pid_t ExternalCommand::execute() {
             JobContinued(job_id);
         }
         cout << job.cmd_line << " : " << job.pid << endl;
-        if(kill(job.getPid(), SIGCONT)==-1){
+        if(kill(job.getjobPid(), SIGCONT)==-1){
             perror("smash error: kill system call failed");
             exit(EXIT_FAILURE);
         }
@@ -771,7 +775,7 @@ pid_t ExternalCommand::execute() {
                 return;
             }
             if (job.is_stopped) {
-                if(kill(SIGCONT, job.pid)==-1){
+                if(kill(job.pid, SIGCONT)==-1){
                     perror("smash: kill system call failed");
                     exit(EXIT_FAILURE);
                 }
@@ -792,7 +796,7 @@ pid_t ExternalCommand::execute() {
                 catch (...) {
                     assert(false);/// Cannot happen. Exists in stop and therefore exists in jobs
                 }
-                if(kill(SIGCONT, job.pid)==-1){
+                if(kill(job.getjobPid(), SIGCONT)==-1){
                     perror("smash: kill system call failed");
                     exit(EXIT_FAILURE);
                 }
@@ -803,7 +807,7 @@ pid_t ExternalCommand::execute() {
     }
 
     void SmallShell::AlarmTriggered(time_t time) {
-        cleanup();
+        //cleanup();
         for (auto it = TimedJobsList.begin(); it != TimedJobsList.end();) {
             if (difftime(time, it->startime) >= it->duration) {
                 pid_t pid = it->pid;
@@ -908,7 +912,13 @@ pid_t ExternalCommand::execute() {
             cmd->execute();
         } else {
             perror("smash error: opening file failed");
-            exit(EXIT_FAILURE);
+            dup2(stdout_copy,STDOUT_FILENO);
+            if(close(stdout_copy)==-1){
+                perror("smash: close func failed");
+                exit(EXIT_FAILURE);
+            }
+            return 0;
+
         }
         if(close(STDOUT_FILENO)==-1){
             perror("smash: close system call failed");
