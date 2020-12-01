@@ -573,7 +573,7 @@ pid_t ExternalCommand::execute() {
 
     void SmallShell::printBeforeQuit() {
         std::sort(job_list.jobs_list.begin(), job_list.jobs_list.end(), JobNuGreaterThen);
-        cout << "sending SIGKILL signal to " << job_list.jobs_list.size() << " jobs:" << endl;
+        cout << "smash: sending SIGKILL signal to " << job_list.jobs_list.size() << " jobs:" << endl;
         for (int i = 0; i < job_list.jobs_list.size(); i++) {
             cout << job_list.jobs_list[i].job_id << ": " << job_list.jobs_list[i].cmd_line << endl;
         }
@@ -626,6 +626,9 @@ pid_t ExternalCommand::execute() {
     *shell):BuiltInCommand (cmd_line), shell(shell) {
         std::string killnum, cmdjob;
         int signum;
+        if(arg_vec_size!=3 || (arg_vec_size==4 && !strcmp(cmd_arg[3], "&"))){
+            status = SyntaxError;
+        }
         if (cmd_arg[1] != nullptr) {
             killnum = cmd_arg[1];
             if (killnum.find_first_of('-') != 0) {
@@ -656,7 +659,7 @@ pid_t ExternalCommand::execute() {
 
     pid_t KillCommand::execute() {
         JobsList::JobEntry job;
-        if (status == SyntaxError || job_id ==-1) {
+        if (status == SyntaxError) {
             cout << "smash error: kill: invalid arguments" << endl;
             return 0;
         }
@@ -671,7 +674,7 @@ pid_t ExternalCommand::execute() {
         int result = kill(job_pid, signal);
         if ( result == -1) {
             perror("smash error: kill failed");
-            exit(EXIT_FAILURE);
+            return 0;
         }
         if (signal == SIGSTOP || signal == SIGTSTP) {
             try {
@@ -803,7 +806,7 @@ pid_t ExternalCommand::execute() {
 
     void SmallShell::returnFromBackground(int jobId) {
         JobsList::JobEntry job;
-        if (jobId != -1) {  ///Return last stopped job
+        if (jobId != -1) {
             try {
                 job = getJob(jobId);
             }
@@ -821,12 +824,12 @@ pid_t ExternalCommand::execute() {
                 cout << "smash error: bg: job-id " << job.job_id << " is already running in the background" << endl;
                 return;
             }
-        } else {
+        } else { ///Return last stopped job
             if (job_list.stopped_jobs.empty()) {
                 cout << "smash error: bg: there is no stopped jobs to resume" << endl;
                 return;
             } else {
-                jobId = job_list.stopped_jobs.front();
+                jobId = job_list.stopped_jobs.back();
                 try {
                     job = getJob(jobId);
                 }
