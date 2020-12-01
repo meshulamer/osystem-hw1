@@ -18,7 +18,7 @@ void ctrlCHandler(int signal) {
     SmallShell& smash = SmallShell::getInstance();
     if(smash.job_in_fg == nullptr)
         return;
-    pid_t fg_pid = smash.job_in_fg->getPid();
+    pid_t fg_pid = smash.job_in_fg->getjobPid();
     if(fg_pid != getpid()) {
         if(kill(fg_pid, SIGKILL)==-1) {
             perror("smash error: kill failed");
@@ -37,14 +37,14 @@ void ctrlZHandler(int singal) {
     if(smash.job_in_fg == nullptr) {
         return;
     }
-    pid_t fg_pid = smash.job_in_fg->getPid();
+    pid_t fg_pid = smash.job_in_fg->getjobPid();
     if(fg_pid != getpid()) {
         if(kill(fg_pid, SIGSTOP) == -1) {
             perror("smash error: kill failed");
             exit(EXIT_FAILURE);
         }
         JobsList::JobEntry& fg_job = *smash.job_in_fg;
-        smash.job_list.addJob(fg_job.getPid(), fg_job.start_time, fg_job.cmd_line, fg_job.is_timed);
+        smash.job_list.addJob(fg_job.getjobPid(), fg_job.start_time, fg_job.cmd_line, fg_job.is_timed);
         smash.JobHalted(smash.getCurrMaxJobId());
         cout << "smash: process " << fg_pid << " was stopped" << endl;
     }

@@ -191,8 +191,8 @@ void SmallShell::executeCommand(const char *cmd_line) {
   cleanup();
   Command* cmd = CreateCommand(cmd_line);
   if(cmd == nullptr){
-      perror("smash error: Command memory allocation failed");
-      exit(EXIT_FAILURE);
+      perror("smash error: malloc failed");
+      return;
   }
   cmd->execute();
   delete cmd;
@@ -203,7 +203,7 @@ void SmallShell::addJob(int pid, time_t startime, char* cmd_line, bool is_timed)
         job_list.addJob(pid, startime, cmd_line, is_timed);
     }
     catch(...){
-        perror("smash error: JobList memory allocation failed");
+        perror("smash error: JobList malloc failed");
         exit(EXIT_FAILURE);
     }
 
@@ -237,8 +237,8 @@ pid_t LsCommand::execute() {
     int n;
     n = scandir(".", &namelist, NULL, alphasort);
     if (n == -1) {
-        perror("smash error: scandir call failed");
-        exit(EXIT_FAILURE);
+        perror("smash error: scandir failed");
+        return 0;
     }
     int i = 2;
     while (i < n) {
@@ -253,7 +253,12 @@ pid_t LsCommand::execute() {
 ShowPidCommand::ShowPidCommand(const char *cmd_line) : BuiltInCommand(cmd_line) {}
 
 pid_t ShowPidCommand::execute() {
-    cout << "smash pid is " << getpid() << endl;
+    pid_t pid = getpid();
+    if(pid == -1){
+        perror("smash error: getpid failed");
+        return 0;
+    }
+    cout << "smash pid is " << pid << endl;
     return 0;
 }
 
@@ -273,7 +278,7 @@ void JobsList::addJob(int pid, time_t startime, char* com, bool is_timed) {
         jobs_list.push_back(new_job);
     }
     catch(...){
-        perror("smash error: Joblist memory allocation failed");
+        perror("smash error: malloc failed");
         exit(EXIT_FAILURE);
     }
 }
@@ -297,7 +302,7 @@ std::vector<int>* JobsList::removeFinishedJobs() {
             it = jobs_list.erase(it);
         }
         else if(retval == -1){
-            perror("smash error: waitpid failed during status check");
+            perror("smash error: waitpid failed");
             exit(EXIT_FAILURE);
         }
         else{
@@ -383,18 +388,19 @@ bool JobsList::JobEntry::IsTimed() {
 
 
 PwdCommand::PwdCommand(const char* cmd_line, char** cmd_arg , int arg_vec_size, SmallShell* shell): BuiltInCommand(cmd_line), shell(shell){
+
+}
+
+
+pid_t PwdCommand::execute() {
     char buf[1024];
     try {
         path = getcwd(buf, 1024);
     }
     catch(std::exception &err){
-        cout << "smash error: PwdCommand error in :"<< err.what();
-        exit(EXIT_FAILURE);
+        perror("smash error: getcwd failed");
+        return 0;
     }
-}
-
-
-pid_t PwdCommand::execute() {
     cout << path << endl;
     return 0;
 }
@@ -426,11 +432,15 @@ pid_t ChangeDirCommand::execute() {
         else{
             char buf[128];
             char* current_dir = getcwd(buf,128);
+            if(current_dir == nullptr){
+                perror("shell error: getcwd failed");
+                return 0;
+            }
             if (chdir(old_dir) == 0){
                 shell->update_old_dir(current_dir);
             }
             else{
-                perror("shell error: cd: not able to change directory");
+                perror("smash error: chdir failed");
                 return 0;
             }
         }
@@ -438,11 +448,15 @@ pid_t ChangeDirCommand::execute() {
     else {
         char buf[128];
         char* current_dir = getcwd(buf,128);
+        if(current_dir == nullptr){
+            perror("shell error: getcwd failed");
+            return 0;
+        }
         if (chdir(new_dir) == 0){
             shell->update_old_dir(current_dir);
         }
         else{
-            perror("shell error: cd: not able to change directory");
+            perror("shell error: chdir failed");
             return 0;
         }
     }
@@ -467,18 +481,29 @@ pid_t ExternalCommand::execute() {
     int pid = fork();
     if (pid == 0) {
         if (setpgrp() == -1) {
-            perror("smash error: Cp Command setpgrp failed");
+            perror("smash error: setpgrp failed");
             exit(EXIT_FAILURE);
         }
         if (pipeuse != NOTUSED) {
-            close(pipe_args[0]);
-            close(pipe_args[1]);
+            if(close(pipe_args[0])==-1){
+                close(pipe_args[1]);
+                perror("smash error: close failed");
+                exit(EXIT_FAILURE);
+            }
+            if(close(pipe_args[1])== -1){
+                perror("smash error: close failed");
+                exit(EXIT_FAILURE);
+            }
         }
         if (execv(execv_args[0], execv_args) == -1) {
             perror("smash error: execv() failed");
             exit(1);
         }
     } else {
+        if(pid == -1){
+            perror("smash error: fork failed");
+            return 0;
+        }
         int job_id = 0;
         if (bg_cmd) {
             shell->addJob(pid, startime, cmd_string, isTimed());
@@ -494,12 +519,12 @@ pid_t ExternalCommand::execute() {
         if (!bg_cmd) {
             shell->job_in_fg = new JobsList::JobEntry(pid, startime, cmd_string, isTimed());
             if(shell ->job_in_fg == nullptr){
-                perror("smash error: Joblist memory allocation failed");
+                perror("smash error: malloc failed");
                 exit(EXIT_FAILURE);
             }
             if (!bg_cmd && pipeuse == NOTUSED) {
                 if(waitpid(pid, nullptr, WUNTRACED)==-1){
-                    perror("smash error: waitpid system call failed");
+                    perror("smash error: waitpid malloc failed");
                     exit(EXIT_FAILURE);
                 }
                 delete shell->job_in_fg;
@@ -553,7 +578,7 @@ pid_t ExternalCommand::execute() {
     void SmallShell::KillEveryOne() {
         for (auto it = job_list.jobs_list.begin(); it != job_list.jobs_list.end(); it++) {
             if(kill(it->getjobPid(), SIGKILL)==-1){
-                perror("smash error: kill system call failed");
+                perror("smash error: kill failed");
                 exit(EXIT_FAILURE);
             }
         }
@@ -635,7 +660,7 @@ pid_t ExternalCommand::execute() {
         pid_t job_pid = job.getjobPid();
         int result = kill(job_pid, signal);
         if ( result == -1) {
-            perror("smash error: kill system call failed");
+            perror("smash error: kill failed");
             exit(EXIT_FAILURE);
         }
         if (signal == SIGSTOP || signal == SIGTSTP) {
@@ -657,14 +682,14 @@ pid_t ExternalCommand::execute() {
         }
         else if ((signal == SIGKILL) && job.IsTimed()) {
             try{
-                shell->removeTimedJob(job.getPid());
+                shell->removeTimedJob(job.getjobPid());
             }
             catch (...){
                 assert(false);
                 return 0;
             }
         }
-        cout << "signal number " << signal << " was sent to pid " << job.getPid() << endl;
+        cout << "signal number " << signal << " was sent to pid " << job.getjobPid() << endl;
         return 0;
 
     }
@@ -706,7 +731,7 @@ pid_t ExternalCommand::execute() {
             cout << "smash error: fg: job-id " << job_id << " does not exists" << endl;
             return 0;
         }
-        int i = job.getPid();
+        int i = job.getjobPid();
         if (job.IsStopped()) {
             shell->JobContinued(job_id);
         }
@@ -722,7 +747,7 @@ pid_t ExternalCommand::execute() {
         }
         cout << job.cmd_line << " : " << job.pid << endl;
         if(kill(job.getjobPid(), SIGCONT)==-1){
-            perror("smash error: kill system call failed");
+            perror("smash error: kill failed");
             exit(EXIT_FAILURE);
         }
         if(job_in_fg!= nullptr){
@@ -807,7 +832,7 @@ pid_t ExternalCommand::execute() {
     }
 
     void SmallShell::AlarmTriggered(time_t time) {
-        //cleanup();
+        cleanup();
         for (auto it = TimedJobsList.begin(); it != TimedJobsList.end();) {
             if (difftime(time, it->startime) >= it->duration) {
                 pid_t pid = it->pid;
@@ -1161,43 +1186,30 @@ pid_t CpCommand::execute() {
     int pid = fork();
     if (pid == 0) { /// son runs the program
         if (setpgrp() == -1) {
-            perror("smash error: Cp Command setpgrp failed");
+            perror("smash error: setpgrp failed");
             exit(EXIT_FAILURE);
         }
         char buffer[BUFFER_SIZE];
         int chars_read = read(source_fdt, buffer, BUFFER_SIZE);
         while (chars_read == BUFFER_SIZE) {
             if (write(dest_fdt, buffer, chars_read) == -1) {
-                perror("smash error: Cp Command write failed");
+                perror("smash error: write failed");
                 exit(EXIT_FAILURE);
             }
             chars_read = read(source_fdt, buffer, BUFFER_SIZE);
         }
         if (chars_read == -1) {
-            perror("smash error: Cp Command read failed");
+            perror("smash error: read failed");
             exit(EXIT_FAILURE);
         }
         if (chars_read > 0) {
             if (write(dest_fdt, buffer, chars_read) == -1) {
-                perror("smash error: Cp Command write failed");
+                perror("smash error: write failed");
                 exit(EXIT_FAILURE);
             }
         }
         cout << source_path << " was copied to " << dest_path << endl;
         exit(EXIT_SUCCESS);
-    }
-    if (close(source_fdt) == -1) {
-        if (close(source_fdt) == -1) {
-            perror("smash error: Cp Command failed to close source file");
-            perror("smash error: Cp Command failed to close source file");
-            exit(EXIT_FAILURE);
-        }
-        perror("smash error: Cp Command failed to close source file");
-        exit(EXIT_FAILURE);
-    }
-    if (close(dest_fdt) == -1) {
-        perror("smash error: Cp Command failed to close source file");
-        exit(EXIT_FAILURE);
     }
     time_t startime = time(NULL);
     SmallShell &shell = SmallShell::getInstance();
@@ -1217,7 +1229,7 @@ pid_t CpCommand::execute() {
         shell.job_in_fg = new JobsList::JobEntry(pid, startime, cmd_string, isTimed());
         if (!bg_cmd && pipeuse == NOTUSED) {
             if(waitpid(pid, nullptr, WUNTRACED)==-1){
-                perror("smash error: waitpid system call failed");
+                perror("smash error: waitpid failed");
                 exit(EXIT_FAILURE);
             }
             delete shell.job_in_fg;
@@ -1226,6 +1238,18 @@ pid_t CpCommand::execute() {
                 shell.removeTimedJob(pid);
             }
         }
+    }
+    if (close(source_fdt) == -1) {
+        if (close(source_fdt) == -1) {
+            perror("smash error: close failed");
+            perror("smash error: close failed");
+        }
+        perror("smash error: close failed");
+        exit(EXIT_FAILURE);
+    }
+    if (close(dest_fdt) == -1) {
+        perror("smash error: close failed");
+        exit(EXIT_FAILURE);
     }
     return pid;
 }
