@@ -45,10 +45,15 @@ void ctrlZHandler(int singal) {
         }
         JobsList::JobEntry& fg_job = *smash.job_in_fg;
         fg_job.start_time = time(NULL);
-        if(fg_job.job_id > smash.job_list.current_max_job_id){
-            smash.job_list.current_max_job_id = fg_job.job_id;
+        if(fg_job.job_id > 0) {
+            if(fg_job.job_id > smash.job_list.current_max_job_id){
+                smash.job_list.current_max_job_id = fg_job.job_id;
+            }
+            smash.job_list.jobs_list.push_back(fg_job);
         }
-        smash.job_list.jobs_list.push_back(fg_job);
+        else{
+            smash.addJob(fg_job.pid,fg_job.start_time,fg_job.cmd_line,fg_job.is_timed);
+        }
         smash.JobHalted(fg_job.job_id);
         cout << "smash: process " << fg_pid << " was stopped" << endl;
     }
