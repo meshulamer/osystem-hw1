@@ -588,9 +588,11 @@ pid_t ExternalCommand::execute() {
 
     void SmallShell::KillEveryOne() {
         for (auto it = job_list.jobs_list.begin(); it != job_list.jobs_list.end(); it++) {
+            if(it->getjobPid()==1 || it->getjobPid()==0 || it -> getjobPid() == getpid()){
+                continue;
+            }
             if(kill(it->getjobPid(), SIGKILL)==-1){
                 perror("smash error: kill failed");
-                exit(EXIT_FAILURE);
             }
         }
     }
