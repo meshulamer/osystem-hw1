@@ -271,8 +271,8 @@ pid_t ShowPidCommand::execute() {
 }
 
 
-JobsList::JobEntry::JobEntry(int pid, time_t startime, char *com, bool is_timed) : start_time(startime), pid(pid), is_timed(is_timed),
-    is_stopped(false) {
+JobsList::JobEntry::JobEntry(int pid, time_t startime, char *com, bool is_timed) : start_time(startime),job_id(-1), pid(pid), is_timed(is_timed),
+    is_stopped(false)  {
     strcpy(cmd_line, com);
 }
 
@@ -770,6 +770,7 @@ pid_t ExternalCommand::execute() {
             delete job_in_fg;
         }
         job_in_fg = new JobsList::JobEntry(job.pid,job.start_time,job.cmd_line,job.is_timed);
+        job_in_fg->job_id = job_id;
         job_list.removeJobById(job_id);
         result = waitpid(job.pid, NULL, WUNTRACED);
         if (result == -1) {
@@ -784,8 +785,13 @@ pid_t ExternalCommand::execute() {
     char **cmd_arg,
     int arg_vec_size, SmallShell
     *shell) : BuiltInCommand (cmd_line), shell(shell) {
-        if (cmd_arg[1] == nullptr) {
-            job_id = -1;
+        if(arg_vec_size > 2){
+            syntax_error = true;
+            return;
+        }
+        if (arg_vec_size == 1 || cmd_arg[1]=="&") {
+            has_job = false;
+            return;
         } else {
             try {
                 _removeBackgroundSign(cmd_arg[1]);
@@ -802,13 +808,13 @@ pid_t ExternalCommand::execute() {
             cout << "smash error: bg: invalid arguments" << endl;
             return 0;
         }
-        shell->returnFromBackground(job_id);
+        shell->returnFromBackground(job_id,has_job);
         return 0;
     }
 
-    void SmallShell::returnFromBackground(int jobId) {
+    void SmallShell::returnFromBackground(int jobId, bool has_job) {
         JobsList::JobEntry job;
-        if (jobId != -1) {
+        if (has_job) {
             try {
                 job = getJob(jobId);
             }
@@ -883,11 +889,8 @@ pid_t ExternalCommand::execute() {
         }
     }
 
-    QuitCommand::QuitCommand(
-    const char *cmd_line,
-    char **cmd_arg,
-    int arg_vec_size, SmallShell
-    *shell) : BuiltInCommand (cmd_line), shell(shell) {
+    QuitCommand::QuitCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size,
+                             SmallShell* shell) : BuiltInCommand (cmd_line), shell(shell) {
         kill_flag = false;
         if (arg_vec_size > 1) {
             std::string second_arg = cmd_arg[1];

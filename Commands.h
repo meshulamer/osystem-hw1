@@ -246,6 +246,7 @@ class BackgroundCommand : public BuiltInCommand {
     SmallShell* shell;
     int job_id;
     bool syntax_error = false;
+    bool has_job = true;
  public:
   BackgroundCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell);
   virtual ~BackgroundCommand() {}
@@ -304,7 +305,7 @@ public:
     void printBeforeQuit();
     void JobContinued(int jobId);
     void addJob(int pid, time_t startime, char* cmd_line, bool is_timed);
-    void returnFromBackground(int jobId);
+    void returnFromBackground(int jobId, bool has_job);
     void moveJobToForeground(int job_id);
     char *cdret() {
         if (old_dir_exist) {

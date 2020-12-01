@@ -53,6 +53,7 @@ void ctrlZHandler(int singal) {
         }
         else{
             smash.addJob(fg_job.pid,fg_job.start_time,fg_job.cmd_line,fg_job.is_timed);
+            fg_job.job_id = smash.job_list.current_max_job_id;
         }
         smash.JobHalted(fg_job.job_id);
         cout << "smash: process " << fg_pid << " was stopped" << endl;
