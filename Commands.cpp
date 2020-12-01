@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+
 #define BASH_PATH "/bin/bash"
 #define LINUX_MAX_PATH_SIZE 4097
 //TODO: All syscalls fail need to print the correct thing and exit. find out the correct system call using strace
@@ -25,6 +26,7 @@ using namespace std;
 void isSpecial(int* redir, int* pipe, char** arg, int arg_size);
 const std::string WHITESPACE = " \n\r\t\f\v";
 pid_t executePiped(Command* cmd,int* filedes,int channel1, int pipeuse);
+bool IsPathExist(const std::string &s);
 
 #if 0
 #define FUNC_ENTRY()  \
@@ -1158,9 +1160,9 @@ CpCommand::CpCommand(const char* cmd_line, char **cmd_arg, int arg_vec_size):Bui
         if(bg_index < dest_path.length() || (arg_vec_size > 3 && cmd_arg[3][0] == '&')){ ///If this is a bg command
             bg_cmd = true;
         }
-        if(bg_index != -1 && bg_index < dest_path.length()){
-            dest_path.substr(0,bg_index);
-        }
+        _removeBackgroundSign(cmd_arg[2]);
+        dest_path = cmd_arg[2];
+        dest_path = dest_path.substr(0,dest_path.find_last_not_of(' ')+1);
     }
 
 }
@@ -1171,30 +1173,35 @@ pid_t CpCommand::execute() {
         return 0;
     }
     int source_fdt, dest_fdt;
-    source_fdt = open(source_path.c_str(), O_RDONLY);
-    if (source_fdt == -1) {
-        perror("smash error: Cp Command failed to open source file");
-        exit(EXIT_FAILURE);
-    }
     char source[LINUX_MAX_PATH_SIZE];
     char dest[LINUX_MAX_PATH_SIZE];
     realpath(source_path.c_str(), source);
     realpath(dest_path.c_str(), dest);
+    source_fdt = open(source, O_RDONLY);
+    if (source_fdt == -1) {
+        perror("smash error: open failed");
+        return 0;
+    }
     if (strcmp(source, dest) == 0) {
         if (close(source_fdt) == -1) {
-            perror("smash error: Cp Command failed to close source file");
-            exit(EXIT_FAILURE);
+            perror("smash error: Close failed");
         }
-        cout << source_path << " was copied to " << dest_path  << endl;
+        cout <<"smash: "  << source_path << " was copied to " << dest_path  << endl;
         return 0;
 
     }
-    dest_fdt = open(dest_path.c_str(), O_CREAT | O_TRUNC | O_WRONLY, 0666);
-    if (dest_fdt == -1) {
-        perror("smash error: Cp Command failed to open destination file");
-        if (close(source_fdt) == -1) {
-            perror("smash error: Cp Command failed to close source file");
-            exit(EXIT_FAILURE);
+    dest_fdt = open(dest, O_CREAT|O_TRUNC | O_WRONLY, 0666);
+    if(dest_fdt == -1){
+        if(!IsPathExist(string(dest_path))){
+            dest_fdt = open(dest, O_TRUNC | O_WRONLY, 0666);
+            if (dest_fdt == -1) {
+                perror("smash error: open failed");
+                if (close(source_fdt) == -1) {
+                    perror("smash error: close failed");
+                    return 0;
+                }
+                return 0;
+            }
         }
     }
     int pid = fork();
@@ -1222,7 +1229,7 @@ pid_t CpCommand::execute() {
                 exit(EXIT_FAILURE);
             }
         }
-        cout << source_path << " was copied to " << dest_path << endl;
+        cout <<"smash: " << source_path << " was copied to " << dest_path << endl;
         exit(EXIT_SUCCESS);
     }
     time_t startime = time(NULL);
@@ -1266,4 +1273,11 @@ pid_t CpCommand::execute() {
         exit(EXIT_FAILURE);
     }
     return pid;
+}
+
+
+bool IsPathExist(const std::string &s)
+{
+    struct stat buffer;
+    return (stat (s.c_str(), &buffer) == 0);
 }

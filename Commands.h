@@ -192,6 +192,7 @@ private:
     std::list<int> stopped_jobs;
 public:
     friend class SmallShell;
+    friend void ctrlZHandler(int singal);
     JobsList(){
         current_max_job_id = 0;
     };

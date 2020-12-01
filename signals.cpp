@@ -44,8 +44,9 @@ void ctrlZHandler(int singal) {
             exit(EXIT_FAILURE);
         }
         JobsList::JobEntry& fg_job = *smash.job_in_fg;
-        smash.job_list.addJob(fg_job.getjobPid(), time(NULL), fg_job.cmd_line, fg_job.is_timed);
-        smash.JobHalted(smash.getCurrMaxJobId());
+        fg_job.start_time = time(NULL);
+        smash.job_list.jobs_list.push_back(fg_job);
+        smash.JobHalted(fg_job.job_id);
         cout << "smash: process " << fg_pid << " was stopped" << endl;
     }
     delete smash.job_in_fg;
