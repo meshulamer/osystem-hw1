@@ -132,35 +132,35 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
     else if(arg_size == 0 || cmd_s.size() == 0){
         rtnCmd = new ExternalCommand(cmd_s.c_str(), arg, 0, this);
     }
-    else if (strcmp(arg[0], "pwd") == 0) {
+    else if (strcmp(arg[0], "pwd") == 0 || (strcmp(arg[0], "pwd&")) ==0) {
         rtnCmd = new PwdCommand(cmd_line, arg, arg_size, this);
-    } else if (strcmp(arg[0], "chprompt") == 0) {
+    } else if (strcmp(arg[0], "chprompt") ==0 || ((strcmp(arg[0], "chprompt&")) ==0) && arg_size == 1) {
         rtnCmd = new ChpromptCommand(cmd_line, arg, arg_size, this);
-    } else if (strcmp(arg[0], "ls") == 0) {
+    } else if (strcmp(arg[0], "ls") == 0  || (strcmp(arg[0], "ls&")) ==0) {
         rtnCmd = new LsCommand(arg[0], this);
     }
-    else if (strcmp(arg[0], "showpid") == 0) {
+    else if (strcmp(arg[0], "showpid") == 0  || (strcmp(arg[0], "showpid&")) ==0) {
         rtnCmd = new ShowPidCommand(cmd_line);
     }
     else if (strcmp(arg[0], "cp") == 0) {
         rtnCmd = new CpCommand(cmd_line,arg,arg_size);
     }
-    else if (strcmp(arg[0], "cd") == 0){
+    else if (strcmp(arg[0], "cd") == 0  || (strcmp(arg[0], "pwd&")) ==0 && arg_size == 1){
         rtnCmd = new ChangeDirCommand(cmd_line, arg, arg_size, this);
     }
-    else if (strcmp(arg[0], "jobs") == 0){
+    else if (strcmp(arg[0], "jobs") == 0  || (strcmp(arg[0], "jobs&")) ==0){
         rtnCmd = new JobsCommand(cmd_line, arg, arg_size, this);
     }
     else if (strcmp(arg[0], "kill") == 0){
         rtnCmd = new KillCommand(cmd_line, arg, arg_size, this);
     }
-    else if (strcmp(arg[0], "bg") == 0){
+    else if (strcmp(arg[0], "bg") == 0  || (strcmp(arg[0], "bg&")) ==0 && arg_size == 1){
         rtnCmd = new BackgroundCommand(cmd_line, arg, arg_size, this);
     }
-    else if (strcmp(arg[0], "fg") == 0) {
+    else if (strcmp(arg[0], "fg") == 0  || (strcmp(arg[0], "fg&")) ==0 && arg_size == 1) {
         rtnCmd = new ForegroundCommand(cmd_line, arg, arg_size, this);
     }
-    else if (strcmp(arg[0], "quit") == 0) {
+    else if (strcmp(arg[0], "quit") == 0  || (strcmp(arg[0], "quit&")) ==0) {
         rtnCmd = new QuitCommand(cmd_line, arg, arg_size, this);
     }
     else if (strcmp(arg[0], "timeout") == 0){
@@ -220,8 +220,11 @@ void SmallShell::cleanup() {
 ChpromptCommand::ChpromptCommand(const char* cmd_line, char** cmd_arg , int arg_vec_size, SmallShell* shell): BuiltInCommand(cmd_line), shell(shell){
     if(arg_vec_size == 1){
         prompt = "smash> ";
+        return;
     }
     else prompt = cmd_arg[1];
+    prompt += ">";
+    prompt += " ";
 }
 
 
@@ -240,9 +243,12 @@ pid_t LsCommand::execute() {
         perror("smash error: scandir failed");
         return 0;
     }
-    int i = 2;
+    int i = 0;
     while (i < n) {
-        printf("%s\n", namelist[i]->d_name);
+        std::string filename = namelist[i]->d_name;
+        if(filename != "." && filename != "..") {
+            cout << filename << endl;
+        }
         free(namelist[i]);
         i++;
     }
@@ -410,8 +416,8 @@ ChangeDirCommand::ChangeDirCommand(const char* cmd_line, char** cmd_arg , int ar
         to_print = "smash error: cd: too many arguments";
         action = SmashError;
     }
-    if(arg_vec_size !=2){
-        cmd_arg[1]= nullptr;
+    else if(arg_vec_size !=2){
+        action = OneARg;
     }
     if(cmd_arg[1] != nullptr) {
         strcpy(new_dir, cmd_arg[1]);
@@ -421,6 +427,9 @@ ChangeDirCommand::ChangeDirCommand(const char* cmd_line, char** cmd_arg , int ar
 pid_t ChangeDirCommand::execute() {
     if(action == SmashError){
         cout << to_print << endl;
+        return 0;
+    }
+    if(action == OneARg){
         return 0;
     }
     else if (strcmp(new_dir, "-") == 0) {
@@ -433,7 +442,7 @@ pid_t ChangeDirCommand::execute() {
             char buf[128];
             char* current_dir = getcwd(buf,128);
             if(current_dir == nullptr){
-                perror("shell error: getcwd failed");
+                perror("smash error: getcwd failed");
                 return 0;
             }
             if (chdir(old_dir) == 0){
@@ -449,14 +458,14 @@ pid_t ChangeDirCommand::execute() {
         char buf[128];
         char* current_dir = getcwd(buf,128);
         if(current_dir == nullptr){
-            perror("shell error: getcwd failed");
+            perror("smash error: getcwd failed");
             return 0;
         }
         if (chdir(new_dir) == 0){
             shell->update_old_dir(current_dir);
         }
         else{
-            perror("shell error: chdir failed");
+            perror("smash error: chdir failed");
             return 0;
         }
     }
@@ -632,6 +641,7 @@ pid_t ExternalCommand::execute() {
             }
             if (cmd_arg[2] != nullptr) {
                 try {
+                    _removeBackgroundSign(cmd_arg[2]);
                     cmdjob = cmd_arg[2];
                     job_id = std::stoi(cmdjob);
                 }
@@ -706,6 +716,7 @@ pid_t ExternalCommand::execute() {
         }
         if (arg_vec_size == 2) {
             try {
+                _removeBackgroundSign(cmd_arg[1]);
                 job_id = stoi(cmd_arg[1]);
             }
             catch (...) {
@@ -772,6 +783,7 @@ pid_t ExternalCommand::execute() {
             job_id = -1;
         } else {
             try {
+                _removeBackgroundSign(cmd_arg[1]);
                 job_id = stoi(cmd_arg[1]);
             }
             catch (...) {
@@ -981,6 +993,10 @@ pid_t ExternalCommand::execute() {
             }
             std::string tempstr = cmd_line;
             int pos = tempstr.find_first_of(cmd_arg[1]);
+            if(pos == -1 || cmd_arg[1] == NULL){
+                syntax_error = true;
+                return;
+            }
             pos += std::string(cmd_arg[1]).size();
             tempstr = tempstr.substr(pos);
             tempstr = _ltrim(tempstr);
@@ -1042,19 +1058,14 @@ pid_t ExternalCommand::execute() {
         if (index_of_pipe_sign == 1) {
             type = ERROR;
         }
-        int index_of_split = cmd1.find_first_of(" |");
+        int index_of_split = cmd1.find_first_of("|");
         cmd1 = cmd1.substr(0, index_of_split);
         bool additional_string_sub = type == ERROR;
         cmd2 = cmd2.substr(cmd2.find_last_of("|") + 1 + additional_string_sub);
         _trim(cmd1);
         _trim(cmd2);
-        for (int i = 0; i < cmd2.size(); i++) {
-            if (cmd2.find_first_of(' ') == 0) {
-                cmd2 = cmd2.substr(1);
-            } else {
-                break;
-            }
-        }
+        cmd1 = cmd1.substr(cmd1.find_first_not_of(' '));
+        cmd2 = cmd2.substr(0, cmd2.find_last_not_of(' ') + 1);
         this->cmd1 = shell->CreateCommand(cmd1.c_str());
         this->cmd2 = shell->CreateCommand(cmd2.c_str());
     }

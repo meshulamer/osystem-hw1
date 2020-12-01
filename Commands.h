@@ -359,7 +359,7 @@ public:
 class ChangeDirCommand : public BuiltInCommand {
 private:
     std::string to_print;
-    typedef enum{Ready, SmashError} Action;
+    typedef enum{Ready, SmashError,OneARg} Action;
     Action action = Ready;
     SmallShell* shell;
     char new_dir[128];
