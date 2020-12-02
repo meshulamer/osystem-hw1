@@ -1069,7 +1069,12 @@ pid_t ExternalCommand::execute() {
             tempstr = tempstr.substr(pos);
             tempstr = _ltrim(tempstr);
             cmd = shell->CreateCommand(tempstr.c_str());
-            cmd->setIsTimed(duration, cmd_line);
+            const type_info& cmd_type = typeid(cmd);
+            const type_info& built_in_type = typeid(BuiltInCommand);
+            const type_info& cp_command_type = typeid(cmd);
+            if(cmd_type != built_in_type || cmd_type == cp_command_type) {
+                cmd->setIsTimed(duration, cmd_line);
+            }
         }
         if (arg_vec_size == 2) {
             no_command = true;
@@ -1098,7 +1103,7 @@ pid_t ExternalCommand::execute() {
 
     void SmallShell::removeTimedJob(int job_pid) {
         for (auto it = TimedJobsList.begin(); it != TimedJobsList.end();) {
-            if (it->pid == job_pid) {
+            if (it->jobid == job_pid) {
                 TimedJobsList.erase(it);
                 return;
             }

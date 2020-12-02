@@ -29,6 +29,8 @@ void ctrlCHandler(int signal) {
         }
         std::cout << "smash: process " << fg_pid << " was killed" << std::endl;
     }
+    delete smash.job_in_fg;
+    smash.job_in_fg = nullptr;
 }
 
 void ctrlZHandler(int singal) {
