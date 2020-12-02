@@ -924,7 +924,6 @@ pid_t ExternalCommand::execute() {
                         return;
                     }
                 }
-                int duration = it->duration;
                 it = TimedJobsList.erase(it);
                 if (pid != getpid()) {
                     if(kill(pid, SIGKILL)==-1){
@@ -961,10 +960,6 @@ pid_t ExternalCommand::execute() {
             shell->printBeforeQuit();
             shell->KillEveryOne();
         }
-        /*if(kill(getpid(), SIGKILL)==-1){
-            perror("smash: kill system call failed");
-            exit(EXIT_FAILURE);
-        }*/
         exit(0);
     }
 
