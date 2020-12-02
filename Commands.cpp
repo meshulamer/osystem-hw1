@@ -564,7 +564,7 @@ pid_t ExternalCommand::execute() {
                 delete shell->job_in_fg;
                 shell->job_in_fg = nullptr;
                 if (isTimed()) {
-                    shell->removeTimedJob(pid);
+                    shell->removeTimedJob(job_id);
                 }
             }
         }
@@ -732,7 +732,7 @@ pid_t ExternalCommand::execute() {
         }
         else if ((signal == SIGKILL) && job.IsTimed()) {
             try{
-                shell->removeTimedJob(job.getjobPid());
+                shell->removeTimedJob(job_id);
             }
             catch (...){
                 assert(false);
@@ -924,10 +924,11 @@ pid_t ExternalCommand::execute() {
                         return;
                     }
                 }
+                bool skip_kill = it->jobid == 0 ;
                 it = TimedJobsList.erase(it);
                 if (pid != getpid()) {
                     if(kill(pid, SIGKILL)==-1){
-                        perror("smash: kill system call failed");
+                        perror("smash: kill failed");
                         exit(EXIT_FAILURE);
                     }
                 }
@@ -1101,9 +1102,9 @@ pid_t ExternalCommand::execute() {
         TimedJobsList.push_back(temp_timed_job);
     }
 
-    void SmallShell::removeTimedJob(int job_pid) {
+    void SmallShell::removeTimedJob(int job_id) {
         for (auto it = TimedJobsList.begin(); it != TimedJobsList.end();) {
-            if (it->jobid == job_pid) {
+            if (it->jobid == job_id) {
                 TimedJobsList.erase(it);
                 return;
             }
@@ -1310,6 +1311,9 @@ pid_t CpCommand::execute() {
         job_id = shell.getCurrMaxJobId();
     }
     if (isTimed()) {
+        if(!bg_cmd){
+            job_id = -1;
+        }
         time_t closest_time = shell.getClosestAlarmTime();
         shell.addTimed(bg_cmd, startime, pid, job_id, getDuration(), originalString());
         if (getDuration() < closest_time || closest_time == 0) {
@@ -1326,7 +1330,7 @@ pid_t CpCommand::execute() {
             delete shell.job_in_fg;
             shell.job_in_fg = nullptr;
             if (isTimed()) {
-                shell.removeTimedJob(pid);
+                shell.removeTimedJob(job_id);
             }
         }
     }

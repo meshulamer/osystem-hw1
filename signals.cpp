@@ -25,7 +25,7 @@ void ctrlCHandler(int signal) {
             exit(EXIT_FAILURE);
         }
         if(smash.job_in_fg->is_timed) {
-            smash.removeTimedJob(fg_pid);
+            smash.removeTimedJob(smash.job_in_fg->job_id);
         }
         std::cout << "smash: process " << fg_pid << " was killed" << std::endl;
     }
