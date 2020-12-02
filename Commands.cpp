@@ -587,8 +587,18 @@ pid_t ExternalCommand::execute() {
     void SmallShell::printJobs() {
         std::sort(job_list.jobs_list.begin(), job_list.jobs_list.end(), JobNuGreaterThen);
         for (int i = 0; i < job_list.jobs_list.size(); i++) {
-            cout << "[" << job_list.jobs_list[i].job_id << "] " << job_list.jobs_list[i].cmd_line << " : "
-                 << job_list.jobs_list[i].pid
+            cout << "[" << job_list.jobs_list[i].job_id << "] ";
+            if(job_list.jobs_list[i].IsTimed()){
+                unsigned int duration = 0;
+                for(auto it = TimedJobsList.begin(); it != TimedJobsList.end(); it++){
+                    if(it->jobid == job_list.jobs_list[i].job_id){
+                        duration = it->duration;
+                        break;
+                    }
+                }
+                cout << "timeout " << duration << " ";
+            }
+            cout << job_list.jobs_list[i].cmd_line << " : "<< job_list.jobs_list[i].pid
                  << " " << difftime(time(nullptr), job_list.jobs_list[i].start_time) << " secs ";
             if (job_list.jobs_list[i].is_stopped) cout << "(stopped)";
             cout << endl;
@@ -599,8 +609,8 @@ pid_t ExternalCommand::execute() {
     void SmallShell::printBeforeQuit() {
         std::sort(job_list.jobs_list.begin(), job_list.jobs_list.end(), JobNuGreaterThen);
         cout << "smash: sending SIGKILL signal to " << job_list.jobs_list.size() << " jobs:" << endl;
-        for (int i = 0; i < job_list.jobs_list.size(); i++) {
-            cout << job_list.jobs_list[i].job_id << ": " << job_list.jobs_list[i].cmd_line << endl;
+        for (auto it = job_list.jobs_list.begin(); it != job_list.jobs_list.end(); it++) {
+            cout << it->job_id << ": " << it->cmd_line << endl;
         }
     }
 
@@ -769,7 +779,7 @@ pid_t ExternalCommand::execute() {
             job = shell->getJob(job_id);
         }
         catch (...) {
-            cout << "smash error: fg: job-id " << job_id << " does not exists" << endl;
+            cout << "smash error: fg: job-id " << job_id << " does not exist" << endl;
             return 0;
         }
         int i = job.getjobPid();
@@ -894,6 +904,7 @@ pid_t ExternalCommand::execute() {
                         return;
                     }
                 }
+                int duration = it->duration;
                 it = TimedJobsList.erase(it);
                 if (pid != getpid()) {
                     if(kill(pid, SIGKILL)==-1){
@@ -903,7 +914,7 @@ pid_t ExternalCommand::execute() {
                 }
                 _rtrim(cmd);
                 cout << "smash: got an alarm" << endl;
-                cout << cmd << " timed out!" << endl;
+                cout << "smash: "  << cmd << " timed out!" << endl;
                 break;
             }
             ++it;
@@ -914,12 +925,12 @@ pid_t ExternalCommand::execute() {
         }
     }
 
-    QuitCommand::QuitCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size,
-                             SmallShell* shell) : BuiltInCommand (cmd_line), shell(shell) {
+    QuitCommand::QuitCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell*shell) :
+    BuiltInCommand (cmd_line), shell(shell) {
         kill_flag = false;
         if (arg_vec_size > 1) {
             std::string second_arg = cmd_arg[1];
-            if (second_arg == "kill") {
+            if (second_arg == "kill" || second_arg == "kill&") {
                 kill_flag = true;
             }
         }
@@ -1016,24 +1027,26 @@ pid_t ExternalCommand::execute() {
         return 0;
     }
 
-    TimeoutCommand::TimeoutCommand(
-    const char *cmd_line,
-    char **cmd_arg,
-    int arg_vec_size, SmallShell
-    *shell): BuiltInCommand (cmd_line),
-    shell(shell) {
+    TimeoutCommand::TimeoutCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell):
+    BuiltInCommand (cmd_line), shell(shell) {
+        int dur;
         if (arg_vec_size < 2) {
             syntax_error = true;
         } else {
             try {
                 duration = stoi(cmd_arg[1]);
+                dur = int(duration);
+                if (dur < 0) {
+                    syntax_error = true;
+                    return;
+                }
             }
             catch (...) {
                 syntax_error = true;
             }
             std::string tempstr = cmd_line;
             int pos = tempstr.find_first_of(cmd_arg[1]);
-            if(pos == -1 || cmd_arg[1] == NULL){
+            if (pos == -1 || cmd_arg[1] == NULL) {
                 syntax_error = true;
                 return;
             }
@@ -1049,12 +1062,14 @@ pid_t ExternalCommand::execute() {
     }
 
     pid_t TimeoutCommand::execute() {
-        if (syntax_error) {
-            cout << "smash error: Timeout command syntax error" << endl;
+        if (syntax_error || no_command) {
+            cout << "smash error: timeout: invalid arguments" << endl;
             return 0;
         }
-        if (no_command) {
-            cout << "smash error: Timeout command empty command" << endl;
+        if(duration == 0) {
+            _rtrim(cmd_string);
+            cout << "smash: got an alarm" << endl;
+            cout << cmd_string << " timed out!" << endl;
             return 0;
         }
         cmd->execute();

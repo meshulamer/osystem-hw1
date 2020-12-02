@@ -51,6 +51,7 @@ public:
         return false;
     }
     void virtual setToBgState(){};
+    const char* getOriginalStringCommand();
     //virtual void prepare();
     //virtual void cleanup(){};
     // TODO: Add your extra methods if needed
@@ -267,6 +268,7 @@ public:
         }
     }
     pid_t execute() override;
+
 };
 // maybe ls, timeout ?
 
