@@ -599,8 +599,8 @@ pid_t ExternalCommand::execute() {
                 cout << "timeout " << duration << " ";
             }
             cout << job_list.jobs_list[i].cmd_line << " : "<< job_list.jobs_list[i].pid
-                 << " " << difftime(time(nullptr), job_list.jobs_list[i].start_time) << " secs ";
-            if (job_list.jobs_list[i].is_stopped) cout << "(stopped)";
+                 << " " << difftime(time(nullptr), job_list.jobs_list[i].start_time) << " secs";
+            if (job_list.jobs_list[i].is_stopped) cout << " (stopped)";
             cout << endl;
         }
     }
@@ -796,6 +796,16 @@ pid_t ExternalCommand::execute() {
         if(job.is_stopped){
             JobContinued(job_id);
         }
+        if(job.IsTimed()){
+            unsigned int duration = 0;
+            for(auto it = TimedJobsList.begin(); it != TimedJobsList.end(); it++) {
+                if(it->jobid == job_id) {
+                    duration = it->duration;
+                    break;
+                }
+            }
+            cout << "timeout " << duration << " ";
+        }
         cout << job.cmd_line << " : " << job.pid << endl;
         if(kill(job.getjobPid(), SIGCONT)==-1){
             perror("smash error: kill failed");
@@ -886,6 +896,16 @@ pid_t ExternalCommand::execute() {
                 JobContinued(jobId);
             }
         }
+        if(job.IsTimed()) {
+            unsigned int duration = 0;
+            for(auto it = TimedJobsList.begin(); it != TimedJobsList.end(); it++) {
+                if(it->jobid == jobId) {
+                    duration = it->duration;
+                    break;
+                }
+            }
+            cout << "timeout " << duration << " ";
+        }
         cout << job.cmd_line << " : " << job.pid << endl;
     }
 
@@ -941,11 +961,11 @@ pid_t ExternalCommand::execute() {
             shell->printBeforeQuit();
             shell->KillEveryOne();
         }
-        if(kill(getpid(), SIGKILL)==-1){
+        /*if(kill(getpid(), SIGKILL)==-1){
             perror("smash: kill system call failed");
             exit(EXIT_FAILURE);
-        }
-        return 0;
+        }*/
+        exit(0);
     }
 
     RedirectionCommand::RedirectionCommand(
