@@ -51,6 +51,7 @@ public:
         return false;
     }
     void virtual setToBgState(){};
+    const char* getOriginalStringCommand();
     //virtual void prepare();
     //virtual void cleanup(){};
     // TODO: Add your extra methods if needed
@@ -164,7 +165,7 @@ public:
     class JobEntry {
         time_t start_time;
         int job_id;
-        int pid;
+        pid_t pid;
         bool is_finished;
         bool is_stopped;
         char cmd_line[COMMAND_ARGS_MAX_LENGTH];
@@ -176,7 +177,7 @@ public:
         friend void ctrlCHandler(int signal);
         friend void ctrlZHandler(int signal);
         friend int JobNuGreaterThen(JobsList::JobEntry &a, JobsList::JobEntry &b);
-        int getPid(){return pid;};
+        pid_t getjobPid(){return pid;};
         bool IsStopped();
         bool IsTimed();
         JobEntry(int pid, time_t startime, char* com, bool is_timed);
@@ -192,6 +193,7 @@ private:
     std::list<int> stopped_jobs;
 public:
     friend class SmallShell;
+    friend void ctrlZHandler(int singal);
     JobsList(){
         current_max_job_id = 0;
     };
@@ -245,6 +247,7 @@ class BackgroundCommand : public BuiltInCommand {
     SmallShell* shell;
     int job_id;
     bool syntax_error = false;
+    bool has_job = true;
  public:
   BackgroundCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell);
   virtual ~BackgroundCommand() {}
@@ -265,6 +268,7 @@ public:
         }
     }
     pid_t execute() override;
+
 };
 // maybe ls, timeout ?
 
@@ -303,7 +307,7 @@ public:
     void printBeforeQuit();
     void JobContinued(int jobId);
     void addJob(int pid, time_t startime, char* cmd_line, bool is_timed);
-    void returnFromBackground(int jobId);
+    void returnFromBackground(int jobId, bool has_job);
     void moveJobToForeground(int job_id);
     char *cdret() {
         if (old_dir_exist) {
@@ -359,7 +363,7 @@ public:
 class ChangeDirCommand : public BuiltInCommand {
 private:
     std::string to_print;
-    typedef enum{Ready, SmashError} Action;
+    typedef enum{Ready, SmashError,OneARg} Action;
     Action action = Ready;
     SmallShell* shell;
     char new_dir[128];
