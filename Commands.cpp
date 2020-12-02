@@ -948,7 +948,7 @@ pid_t ExternalCommand::execute() {
             is_background = true;
             cmd2 = cmd2.substr(0,last_not_space);
         }
-        cmd1 = cmd1.substr(0, cmd1.find_first_of(">") - 1);
+        cmd1 = cmd1.substr(0, cmd1.find_first_of(">"));
         output_path = cmd2.substr(cmd2.find_last_of(">") + 1);
         char temp_cmd[COMMAND_ARGS_MAX_LENGTH];
         strcpy(temp_cmd, cmd1.c_str());
@@ -966,8 +966,6 @@ pid_t ExternalCommand::execute() {
         if(is_background){
             cmd->setToBgState();
         }
-        char dest[LINUX_MAX_PATH_SIZE];
-        realpath(output_path.c_str(), dest);
         int stdout_copy = dup(STDOUT_FILENO);
         if(stdout_copy == -1){
             perror("smash: dup function failed");
@@ -975,10 +973,10 @@ pid_t ExternalCommand::execute() {
         }
         int oflags = append ? (O_WRONLY | O_APPEND | O_CREAT) : O_WRONLY | O_CREAT | O_TRUNC;
         int cflag = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH | S_IXOTH;
-        int fdt_i = open(dest, oflags, 0666);
+        int fdt_i = open(output_path.c_str(), oflags, 0666);
         if(fdt_i == -1){
-            if(!IsPathExist(dest)){
-                open(dest,O_WRONLY,0666);
+            if(!IsPathExist(output_path.c_str())){
+                open(output_path.c_str(),O_TRUNC|O_WRONLY,0666);
             }
             perror("smash error: open failed");
             return 0;
