@@ -23,7 +23,7 @@
 //TODO: tests
 //TODO: get tests from eilon
 using namespace std;
-void isSpecial(int* redir, int* pipe, char** arg, int arg_size);
+void isSpecial(int* redir, int* pipe, std::string cmd);
 const std::string WHITESPACE = " \n\r\t\f\v";
 pid_t executePiped(Command* cmd,int* filedes,int channel1, int pipeuse);
 bool IsPathExist(const std::string &s);
@@ -123,7 +123,7 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
     int arg_size =_parseCommandLine(cmd_line, arg);
     string cmd_s = string(cmd_line);
     cmd_s = _trim(cmd_s);
-    isSpecial(&redirection_command, &pipecommand, arg, arg_size);
+    isSpecial(&redirection_command, &pipecommand, cmd_line);
     Command* rtnCmd = nullptr;
     if(redirection_command != -1){
         rtnCmd = new RedirectionCommand(cmd_line, redirection_command ,this);
@@ -178,11 +178,34 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
     return rtnCmd;
 }
 
-void isSpecial(int* redir, int* pipe, char** arg, int arg_size){
-    for(int i =0; i< arg_size; i++){
-        if(strcmp(arg[i],"|")==0 || strcmp(arg[i],"|&")==0) *pipe = strcmp(arg[i],"|&")==0;
-        if(strcmp(arg[i],">")==0 ||strcmp(arg[i],">>")==0) *redir = strcmp(arg[i],">>")==0;
-    }
+void isSpecial(int* redir, int* pipe, std::string cmd_line){
+        int index = cmd_line.find_first_of('|');
+        if(index < cmd_line.size()){
+            try{
+                if(cmd_line[index+1]=='&'){
+                    *pipe = 1;
+                    return;
+                }
+            }
+            catch(...){
+            }
+            *pipe = 0;
+            return;
+        }
+        index = cmd_line.find_first_of('>');
+        if(index < cmd_line.size()){
+            try{
+                if(cmd_line[index+1]=='>'){
+                    *redir = 1;
+                    return;
+                }
+            }
+            catch(...){
+            }
+            *redir = 0;
+            return;
+        }
+
 }
 
 std::string SmallShell::promptDisplay() const {
@@ -943,44 +966,53 @@ pid_t ExternalCommand::execute() {
         if(is_background){
             cmd->setToBgState();
         }
+        char dest[LINUX_MAX_PATH_SIZE];
+        realpath(output_path.c_str(), dest);
         int stdout_copy = dup(STDOUT_FILENO);
         if(stdout_copy == -1){
             perror("smash: dup function failed");
             exit(EXIT_FAILURE);
         }
-        int oflags = append ? (O_WRONLY | O_APPEND | O_CREAT) : O_WRONLY | O_CREAT;
+        int oflags = append ? (O_WRONLY | O_APPEND | O_CREAT) : O_WRONLY | O_CREAT | O_TRUNC;
         int cflag = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH | S_IXOTH;
-        int fdt_i = open(output_path.c_str(), oflags, 0666);
-        if(dup2(fdt_i,STDOUT_FILENO) == -1){
-            perror("smash: dup function failed");
-            exit(EXIT_FAILURE);
+        int fdt_i = open(dest, oflags, 0666);
+        if(fdt_i == -1){
+            if(!IsPathExist(dest)){
+                open(dest,O_WRONLY,0666);
+            }
+            perror("smash error: open failed");
+            return 0;
         }
         if (-1 != fdt_i) {
+            if(dup2(fdt_i,STDOUT_FILENO) == -1){
+                perror("smash error: dup2 failed");
+                exit(EXIT_FAILURE);
+            }
             cmd->execute();
         } else {
-            perror("smash error: opening file failed");
+            perror("smash error: open failed");
             dup2(stdout_copy,STDOUT_FILENO);
             if(close(stdout_copy)==-1){
-                perror("smash: close func failed");
+                perror("smash error: close failed");
                 exit(EXIT_FAILURE);
             }
             return 0;
 
         }
         if(close(STDOUT_FILENO)==-1){
-            perror("smash: close system call failed");
+            perror("smash: close failed");
             exit(EXIT_FAILURE);
         }
         if(dup2(stdout_copy, STDOUT_FILENO)==-1){
-            perror("smash: dup function failed");
+            perror("smash: dup2 failed");
             exit(EXIT_FAILURE);
         }
         if(close(stdout_copy)==-1){
-            perror("smash: close system call failed");
+            perror("smash: close failed");
             exit(EXIT_FAILURE);
         }
         if(close(fdt_i)==-1){
-            perror("smash: close system call failed");
+            perror("smash: close failed");
             exit(EXIT_FAILURE);
         }
         return 0;
