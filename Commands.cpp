@@ -18,10 +18,7 @@
 
 #define BASH_PATH "/bin/bash"
 #define LINUX_MAX_PATH_SIZE 4097
-//TODO: All syscalls fail need to print the correct thing and exit. find out the correct system call using strace
-//TODO: cp commands
-//TODO: tests
-//TODO: get tests from eilon
+
 using namespace std;
 void isSpecial(int* redir, int* pipe, std::string cmd);
 const std::string WHITESPACE = " \n\r\t\f\v";
@@ -922,9 +919,6 @@ pid_t ExternalCommand::execute() {
                 bool skip_kill = it->jobid == 0 ;
                 it = TimedJobsList.erase(it);
                 if (pid != getpid()) {
-                    if(waitpid(pid, nullptr,WNOHANG)>0){
-                        return;
-                    }
                     if(kill(pid, SIGKILL)==-1){
                         perror("smash: kill failed");
                         exit(EXIT_FAILURE);
@@ -973,7 +967,7 @@ pid_t ExternalCommand::execute() {
             is_background = true;
             cmd2 = cmd2.substr(0,last_not_space);
         }
-        cmd1 = cmd1.substr(0, cmd1.find_first_of(">")); ///Maybe -1?
+        cmd1 = cmd1.substr(0, cmd1.find_first_of(">"));
         output_path = cmd2.substr(cmd2.find_last_of(">") + 1);
         char temp_cmd[COMMAND_ARGS_MAX_LENGTH];
         strcpy(temp_cmd, cmd1.c_str());
@@ -993,8 +987,8 @@ pid_t ExternalCommand::execute() {
         }
         int stdout_copy = dup(STDOUT_FILENO);
         if(stdout_copy == -1){
-            perror("smash: dup failed");
-            return 0;
+            perror("smash: dup function failed");
+            exit(EXIT_FAILURE);
         }
         int oflags = append ? (O_WRONLY | O_APPEND | O_CREAT) : O_WRONLY | O_CREAT | O_TRUNC;
         int cflag = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH | S_IXOTH;
@@ -1011,20 +1005,6 @@ pid_t ExternalCommand::execute() {
                 perror("smash error: dup2 failed");
                 exit(EXIT_FAILURE);
             }
-        if(fdt_i == -1){
-            if(!IsPathExist(output_path.c_str())){
-                open(output_path.c_str(),O_WRONLY,0666);
-            }
-            perror("smash error: open failed");
-            return 0;
-        }
-        if(dup2(fdt_i,STDOUT_FILENO) == -1){
-            perror("smash error: dup2 failed");
-            if(close(stdout_copy)==-1){
-                perror("smash error: close failed");
-            }
-        }
-        if (-1 != fdt_i) {
             cmd->execute();
         } else {
             perror("smash error: open failed");
@@ -1032,8 +1012,6 @@ pid_t ExternalCommand::execute() {
             if(close(stdout_copy)==-1){
                 perror("smash error: close failed");
                 exit(EXIT_FAILURE);
-                perror("smash error: close failed");
-                return 0;
             }
             return 0;
 
@@ -1056,7 +1034,6 @@ pid_t ExternalCommand::execute() {
         }
         return 0;
     }
-}
     TimeoutCommand::TimeoutCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell):
     BuiltInCommand (cmd_line), shell(shell) {
         int dur;
