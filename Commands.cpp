@@ -228,7 +228,7 @@ void SmallShell::addJob(int pid, time_t startime, char* cmd_line, bool is_timed)
         job_list.addJob(pid, startime, cmd_line, is_timed);
     }
     catch(...){
-        perror("smash error: JobList malloc failed");
+        perror("smash error: malloc failed");
         exit(EXIT_FAILURE);
     }
 
@@ -334,7 +334,6 @@ std::vector<int>* JobsList::removeFinishedJobs() {
         }
         else if(retval == -1){
             perror("smash error: waitpid failed");
-            exit(EXIT_FAILURE);
         }
         else{
             if (it->job_id > new_max) new_max = it -> job_id;
@@ -425,10 +424,8 @@ PwdCommand::PwdCommand(const char* cmd_line, char** cmd_arg , int arg_vec_size, 
 
 pid_t PwdCommand::execute() {
     char buf[1024];
-    try {
-        path = getcwd(buf, 1024);
-    }
-    catch(std::exception &err){
+    path = getcwd(buf, 1024);
+    if(path.c_str() == NULL){
         perror("smash error: getcwd failed");
         return 0;
     }
@@ -531,7 +528,7 @@ pid_t ExternalCommand::execute() {
         }
         if (execv(execv_args[0], execv_args) == -1) {
             perror("smash error: execv() failed");
-            exit(1);
+            exit(EXIT_FAILURE);
         }
     } else {
         if(pid == -1){
@@ -558,8 +555,7 @@ pid_t ExternalCommand::execute() {
             }
             if (!bg_cmd && pipeuse == NOTUSED) {
                 if(waitpid(pid, nullptr, WUNTRACED)==-1){
-                    perror("smash error: waitpid malloc failed");
-                    exit(EXIT_FAILURE);
+                    perror("smash error: waitpid failed");
                 }
                 delete shell->job_in_fg;
                 shell->job_in_fg = nullptr;
@@ -809,7 +805,7 @@ pid_t ExternalCommand::execute() {
         cout << job.cmd_line << " : " << job.pid << endl;
         if(kill(job.getjobPid(), SIGCONT)==-1){
             perror("smash error: kill failed");
-            exit(EXIT_FAILURE);
+            return;
         }
         if(job_in_fg!= nullptr){
             delete job_in_fg;
@@ -819,8 +815,7 @@ pid_t ExternalCommand::execute() {
         job_list.removeJobById(job_id);
         result = waitpid(job.pid, NULL, WUNTRACED);
         if (result == -1) {
-            perror("smash error: waitpid system call failed");
-            exit(EXIT_FAILURE);
+            perror("smash error: waitpid failed");
         }
     }
 
@@ -927,6 +922,9 @@ pid_t ExternalCommand::execute() {
                 bool skip_kill = it->jobid == 0 ;
                 it = TimedJobsList.erase(it);
                 if (pid != getpid()) {
+                    if(waitpid(pid, nullptr,WNOHANG)>0){
+                        return;
+                    }
                     if(kill(pid, SIGKILL)==-1){
                         perror("smash: kill failed");
                         exit(EXIT_FAILURE);
@@ -975,7 +973,7 @@ pid_t ExternalCommand::execute() {
             is_background = true;
             cmd2 = cmd2.substr(0,last_not_space);
         }
-        cmd1 = cmd1.substr(0, cmd1.find_first_of(">"));
+        cmd1 = cmd1.substr(0, cmd1.find_first_of(">")); ///Maybe -1?
         output_path = cmd2.substr(cmd2.find_last_of(">") + 1);
         char temp_cmd[COMMAND_ARGS_MAX_LENGTH];
         strcpy(temp_cmd, cmd1.c_str());
@@ -995,8 +993,8 @@ pid_t ExternalCommand::execute() {
         }
         int stdout_copy = dup(STDOUT_FILENO);
         if(stdout_copy == -1){
-            perror("smash: dup function failed");
-            exit(EXIT_FAILURE);
+            perror("smash: dup failed");
+            return 0;
         }
         int oflags = append ? (O_WRONLY | O_APPEND | O_CREAT) : O_WRONLY | O_CREAT | O_TRUNC;
         int cflag = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH | S_IXOTH;
@@ -1013,6 +1011,20 @@ pid_t ExternalCommand::execute() {
                 perror("smash error: dup2 failed");
                 exit(EXIT_FAILURE);
             }
+        if(fdt_i == -1){
+            if(!IsPathExist(output_path.c_str())){
+                open(output_path.c_str(),O_WRONLY,0666);
+            }
+            perror("smash error: open failed");
+            return 0;
+        }
+        if(dup2(fdt_i,STDOUT_FILENO) == -1){
+            perror("smash error: dup2 failed");
+            if(close(stdout_copy)==-1){
+                perror("smash error: close failed");
+            }
+        }
+        if (-1 != fdt_i) {
             cmd->execute();
         } else {
             perror("smash error: open failed");
@@ -1020,6 +1032,8 @@ pid_t ExternalCommand::execute() {
             if(close(stdout_copy)==-1){
                 perror("smash error: close failed");
                 exit(EXIT_FAILURE);
+                perror("smash error: close failed");
+                return 0;
             }
             return 0;
 
@@ -1042,7 +1056,7 @@ pid_t ExternalCommand::execute() {
         }
         return 0;
     }
-
+}
     TimeoutCommand::TimeoutCommand(const char *cmd_line, char **cmd_arg, int arg_vec_size, SmallShell *shell):
     BuiltInCommand (cmd_line), shell(shell) {
         int dur;
@@ -1325,7 +1339,6 @@ pid_t CpCommand::execute() {
         if (!bg_cmd && pipeuse == NOTUSED) {
             if(waitpid(pid, nullptr, WUNTRACED)==-1){
                 perror("smash error: waitpid failed");
-                exit(EXIT_FAILURE);
             }
             delete shell.job_in_fg;
             shell.job_in_fg = nullptr;
@@ -1335,16 +1348,16 @@ pid_t CpCommand::execute() {
         }
     }
     if (close(source_fdt) == -1) {
-        if (close(source_fdt) == -1) {
-            perror("smash error: close failed");
+        perror("smash error: close failed");
+        if (close(dest_fdt) == -1) {
             perror("smash error: close failed");
         }
         perror("smash error: close failed");
-        exit(EXIT_FAILURE);
+        return 0;
     }
     if (close(dest_fdt) == -1) {
         perror("smash error: close failed");
-        exit(EXIT_FAILURE);
+        return 0;
     }
     return pid;
 }
